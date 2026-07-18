@@ -17,12 +17,15 @@ public sealed class AppService
     public Settings Settings { get; }
     public event Action? StateChanged;
 
-    private readonly PlayerManager _players = new();
+    private readonly IPlayerManager _players;
     private bool _manualPause;
     private bool _autoPause;
 
-    public AppService()
+    public AppService() : this(new PlayerManager()) { }
+
+    public AppService(IPlayerManager playerManager)
     {
+        _players = playerManager;
         Settings = Settings.Load();
         WriteRunKey();
         WallpaperHost.Init();
@@ -74,6 +77,13 @@ public sealed class AppService
         Settings.AutoStart = enabled;
         Settings.Save();
         WriteRunKey();
+        StateChanged?.Invoke();
+    }
+
+    public void ApplyPlaybackSettings()
+    {
+        Settings.Save();
+        _players.ApplySettings(Settings);
         StateChanged?.Invoke();
     }
 

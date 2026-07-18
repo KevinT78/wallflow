@@ -3,7 +3,7 @@ using System.Windows.Forms;
 namespace Wallflow;
 
 /// <summary>Un MpvPlayer par écran, même wallpaper partout. Reconstruit tout au changement d'écrans.</summary>
-public sealed class PlayerManager : IDisposable
+public sealed class PlayerManager : IPlayerManager, IDisposable
 {
     private sealed record Entry(IntPtr Host, MpvPlayer Player);
 
@@ -59,6 +59,17 @@ public sealed class PlayerManager : IDisposable
             WallpaperHost.DestroyHost(e.Host);
         }
         _entries.Clear();
+    }
+
+    public void ApplySettings(Settings settings)
+    {
+        foreach (var e in _entries)
+        {
+            e.Player.ApplyVolume(settings.Volume, settings.Muted);
+            e.Player.ApplyVideoFit(settings.VideoFit);
+            e.Player.ApplyLoop(settings.Loop);
+            e.Player.ApplySpeed(settings.Speed);
+        }
     }
 
     public void Dispose() => DisposePlayers();

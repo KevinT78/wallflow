@@ -74,6 +74,37 @@ public sealed class MpvPlayer : IDisposable
 
     public void Resume() => mpv_set_property_string(_ctx, "pause", "no");
 
+    public void ApplyVolume(int vol, bool muted)
+    {
+        mpv_set_property_string(_ctx, "volume", Math.Clamp(vol, 0, 100).ToString());
+        mpv_set_property_string(_ctx, "mute", muted ? "yes" : "no");
+    }
+
+    public void ApplyVideoFit(string fit)
+    {
+        switch (fit)
+        {
+            case "cover":
+                mpv_set_property_string(_ctx, "video-fit", "cover");
+                mpv_set_property_string(_ctx, "panscan", "1.0");
+                break;
+            case "fit":
+                mpv_set_property_string(_ctx, "video-fit", "contain");
+                mpv_set_property_string(_ctx, "panscan", "0");
+                break;
+            case "fill":
+                mpv_set_property_string(_ctx, "video-fit", "fill");
+                mpv_set_property_string(_ctx, "panscan", "0");
+                break;
+        }
+    }
+
+    public void ApplyLoop(bool loop) =>
+        mpv_set_property_string(_ctx, "loop-file", loop ? "inf" : "no");
+
+    public void ApplySpeed(double speed) =>
+        mpv_set_property_string(_ctx, "speed", Math.Clamp(speed, 0.25, 4.0).ToString("F2"));
+
     private void Command(params string[] args)
     {
         // mpv_command attend un char*[] UTF-8 terminé par NULL.
