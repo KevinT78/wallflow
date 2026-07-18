@@ -4,21 +4,17 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         Title="Wallflow" Height="520" Width="560"
         WindowStartupLocation="CenterScreen"
-        ExtendsContentIntoTitleBar="True"
-        WindowBackdropType="Mica"
+        Background="#1A1A1A"
         AllowDrop="True" Drop="OnDrop">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="Wallflow" ShowMaximize="False" />
-
-        <Border Grid.Row="1" Margin="16,8,16,8" Padding="24" CornerRadius="8"
+        <Border Grid.Row="0" Margin="16,8,16,8" Padding="24" CornerRadius="8"
                 BorderThickness="2" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 Background="{DynamicResource ControlFillColorDefaultBrush}"
                 Cursor="Hand" MouseLeftButtonUp="OnBrowse">
@@ -32,7 +28,7 @@
             </StackPanel>
         </Border>
 
-        <ScrollViewer Grid.Row="2" Margin="16,0" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="1" Margin="16,0" VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="RecentsList">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -42,7 +38,7 @@
             </ItemsControl>
         </ScrollViewer>
 
-        <Border Grid.Row="3" Margin="16,0,16,8" Padding="12" CornerRadius="8"
+        <Border Grid.Row="2" Margin="16,0,16,8" Padding="12" CornerRadius="8"
                 BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 Background="{DynamicResource ControlFillColorDefaultBrush}">
             <Grid>
@@ -58,8 +54,7 @@
                 <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,8,8">
                     <TextBlock Text="Volume" FontSize="13" Margin="0,0,0,4" />
                     <StackPanel Orientation="Horizontal">
-                        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Width="120"
-                                ValueChanged="OnVolumeChanged" />
+                        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Width="120" />
                         <ui:ToggleSwitch x:Name="MuteToggle" Content="Muet" Margin="8,0,0,0" />
                     </StackPanel>
                 </StackPanel>
@@ -79,7 +74,7 @@
                     <TextBlock Text="Vitesse" FontSize="13" Margin="0,0,0,4" />
                     <Slider x:Name="SpeedSlider" Minimum="0.25" Maximum="4.0"
                             TickFrequency="0.25" SmallChange="0.25" Width="120"
-                            ValueChanged="OnSpeedChanged" />
+                            IsSnapToTickEnabled="True" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Grid.Row="1" Margin="8,8,0,0">
@@ -88,7 +83,7 @@
             </Grid>
         </Border>
 
-        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="16,0,16,16">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="16,0,16,16">
             <ui:ToggleSwitch x:Name="PauseToggle" Content="Pause" Click="OnPauseToggle" />
             <ui:ToggleSwitch x:Name="AutoStartToggle" Content="Démarrer avec Windows"
                              Margin="24,0,0,0" Click="OnAutoStartToggle" />

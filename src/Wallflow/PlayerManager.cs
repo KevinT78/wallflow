@@ -10,11 +10,15 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     private readonly List<Entry> _entries = [];
     private string? _current;
     private bool _paused;
+    private Settings? _settings;
 
     public void Load(string path)
     {
         _current = path;
         EnsurePlayers();
+        // Réapplique les settings : les players fraîchement créés (démarrage, Rebuild)
+        // partent sur les défauts figés du constructeur MpvPlayer, pas sur settings.json.
+        if (_settings is { } s) ApplySettings(s);
         foreach (var e in _entries)
         {
             e.Player.Load(path);
@@ -63,6 +67,7 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
 
     public void ApplySettings(Settings settings)
     {
+        _settings = settings;
         foreach (var e in _entries)
         {
             e.Player.ApplyVolume(settings.Volume, settings.Muted);

@@ -64,12 +64,14 @@ public partial class App : Application
         var quit = new System.Windows.Controls.MenuItem { Header = "Quitter" };
         quit.Click += (_, _) => Shutdown();
 
-        _service!.StateChanged += () => Dispatcher.Invoke(() =>
+        void Sync()
         {
-            pause.IsChecked = _service.ManualPause;
+            pause.IsChecked = _service!.ManualPause;
             mute.IsChecked = _service.Settings.Muted;
             volume.Header = $"Volume : {_service.Settings.Volume}%";
-        });
+        }
+        _service!.StateChanged += () => Dispatcher.Invoke(Sync);
+        Sync(); // état initial depuis settings.json, pas les défauts des MenuItem
 
         var tray = new TaskbarIcon
         {

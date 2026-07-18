@@ -80,21 +80,22 @@ public sealed class MpvPlayer : IDisposable
         mpv_set_property_string(_ctx, "mute", muted ? "yes" : "no");
     }
 
+    // mpv n'a pas de propriété « video-fit » : le cadrage se pilote via panscan + keepaspect.
     public void ApplyVideoFit(string fit)
     {
         switch (fit)
         {
-            case "cover":
-                mpv_set_property_string(_ctx, "video-fit", "cover");
+            case "cover": // remplit l'écran, rogne les bords
                 mpv_set_property_string(_ctx, "panscan", "1.0");
+                mpv_set_property_string(_ctx, "keepaspect", "yes");
                 break;
-            case "fit":
-                mpv_set_property_string(_ctx, "video-fit", "contain");
+            case "fit": // letterbox, tout visible
                 mpv_set_property_string(_ctx, "panscan", "0");
+                mpv_set_property_string(_ctx, "keepaspect", "yes");
                 break;
-            case "fill":
-                mpv_set_property_string(_ctx, "video-fit", "fill");
+            case "fill": // étire sans respecter le ratio
                 mpv_set_property_string(_ctx, "panscan", "0");
+                mpv_set_property_string(_ctx, "keepaspect", "no");
                 break;
         }
     }
@@ -102,8 +103,10 @@ public sealed class MpvPlayer : IDisposable
     public void ApplyLoop(bool loop) =>
         mpv_set_property_string(_ctx, "loop-file", loop ? "inf" : "no");
 
+    // InvariantCulture obligatoire : en fr-FR, "F2" seul donne "1,50" et mpv rejette la valeur.
     public void ApplySpeed(double speed) =>
-        mpv_set_property_string(_ctx, "speed", Math.Clamp(speed, 0.25, 4.0).ToString("F2"));
+        mpv_set_property_string(_ctx, "speed",
+            Math.Clamp(speed, 0.25, 4.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
 
     private void Command(params string[] args)
     {

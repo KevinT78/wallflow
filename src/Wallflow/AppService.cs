@@ -38,6 +38,9 @@ public sealed class AppService
         };
         SystemEvents.DisplaySettingsChanged += (_, _) => _players.Rebuild();
 
+        // Mémorise les settings dans le manager avant le premier Load, pour qu'il
+        // les applique aux players qu'il créera (sinon défauts mpv : muet, 1x, cover).
+        _players.ApplySettings(Settings);
         if (Settings.LastWallpaper is { } last && File.Exists(last))
             Apply(last);
     }

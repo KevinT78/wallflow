@@ -5,6 +5,15 @@ namespace Wallflow.Tests;
 public class AppServiceTests
 {
     [Fact]
+    public void Constructor_PushesSettingsToPlayerManager()
+    {
+        var pm = new FakePlayerManager();
+        _ = new AppService(pm);
+
+        Assert.NotNull(pm.LastApplied);
+    }
+
+    [Fact]
     public void ApplyPlaybackSettings_PropagatesToPlayerManager()
     {
         var pm = new FakePlayerManager();
