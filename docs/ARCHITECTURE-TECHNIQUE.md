@@ -4,21 +4,23 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au stade kickoff (2026-07-18), avant tout code — dérivé de DESIGN.md et du system design._
-> **⚠️ Statut : spécification.** Les composants et champs cités sont ceux du design validé, pas des
-> fichiers existants. Ce document doit être re-dérivé du code réel dès la première implémentation.
-<!-- doc-provenance: commit=none generated=2026-07-18 stage=kickoff -->
+> _Généré au commit `4bf8184` (2026-07-18)._
+<!-- doc-provenance: commit=4bf8184 generated=2026-07-18 -->
 
 ## Stack
 
-| Couche | Technologie | Emplacement prévu |
-|--------|-------------|-------------------|
-| Application | C# / .NET 8, WPF (projet unique) | `src/Wallflow/` |
-| Lecture média | libmpv (`mpv-2.dll` embarquée), mode embedding `wid` | `MpvPlayer` |
-| Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost`, `ActivityMonitor` |
-| UI tray | H.NotifyIcon (lib) | `TrayIcon` |
-| Thème | WPF-UI ou équivalent Fluent sombre | `MainWindow` |
+| Couche | Technologie | Emplacement |
+|--------|-------------|-------------|
+| Application | C# / .NET 8 WPF, TFM `net8.0-windows10.0.19041.0` (min. 17763), x64 | `src/Wallflow/` |
+| Lecture média | libmpv (`libmpv-2.dll`, build shinchiro, dans `lib/` hors git), embedding `wid` | `MpvPlayer.cs` |
+| Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost.cs`, `ActivityMonitor.cs` |
+| UI tray | H.NotifyIcon.Wpf 2.3.0 | `App.xaml.cs` (`BuildTray`) |
+| Thème | WPF-UI 4.3.0 (FluentWindow, Mica, thème sombre) | `MainWindow.xaml` |
+| Vignettes | API shell `IShellItemImageFactory` | `Thumbnail.cs` |
 | Persistance | `System.Text.Json`, fichier unique | `%LOCALAPPDATA%\Wallflow\settings.json` |
+
+Formats acceptés (`AppService.SupportedExtensions`) : `.gif .webp .mp4 .webm .mkv .png .jpg .jpeg .bmp`
+— `.mkv` s'est ajouté au design initial (gratuit via mpv).
 
 Cibles : Windows 10/11, x64 uniquement. Distribution : zip portable (pas d'installeur).
 
@@ -166,7 +168,8 @@ Un seul fichier, `%LOCALAPPDATA%\Wallflow\settings.json`, réécrit en entier à
 
 Pas à côté de l'exe : le dossier portable peut être déplacé ou en lecture seule — LOCALAPPDATA
 survit aux deux. Les `recents` stockent des **chemins**, pas des copies : un fichier supprimé par
-l'utilisateur disparaît de la grille au chargement suivant (vignette introuvable → entrée purgée).
+l'utilisateur disparaît de la grille (`AppService.Recents` filtre sur `File.Exists`), mais
+**n'est jamais purgé du JSON** — écart réel vs intention, relevé en code-review, à corriger ou assumer.
 
 ## Vignettes des récents
 
