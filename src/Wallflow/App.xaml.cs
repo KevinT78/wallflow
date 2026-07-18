@@ -61,6 +61,9 @@ public partial class App : Application
             Items = { mute, new System.Windows.Controls.Separator(), vol25, vol50, vol75, vol100 },
         };
 
+        var remove = new System.Windows.Controls.MenuItem { Header = "Retirer le fond d'écran" };
+        remove.Click += (_, _) => _service!.RemoveWallpaper();
+
         var quit = new System.Windows.Controls.MenuItem { Header = "Quitter" };
         quit.Click += (_, _) => Shutdown();
 
@@ -76,11 +79,15 @@ public partial class App : Application
         var tray = new TaskbarIcon
         {
             ToolTipText = "Wallflow",
-            Icon = System.Drawing.SystemIcons.Application,
-            ContextMenu = new System.Windows.Controls.ContextMenu { Items = { open, pause, volume, quit } },
+            // HICON réel possédé par l'exe : SystemIcons.Application (handle partagé de l'OS)
+            // ne s'affichait pas de façon fiable dans le tray via Shell_NotifyIcon.
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!),
+            ContextMenu = new System.Windows.Controls.ContextMenu { Items = { open, pause, volume, remove, quit } },
         };
         tray.TrayLeftMouseUp += (_, _) => ShowWindow();
-        tray.ForceCreate();
+        // efficiency mode désactivé : inutile pour une app always-on et suspecté d'empêcher
+        // l'affichage de l'icône sur certaines versions de Windows 10.
+        tray.ForceCreate(enablesEfficiencyMode: false);
         return tray;
     }
 

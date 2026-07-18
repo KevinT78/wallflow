@@ -55,6 +55,8 @@
                     <TextBlock Text="Volume" FontSize="13" Margin="0,0,0,4" />
                     <StackPanel Orientation="Horizontal">
                         <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Width="120" />
+                        <TextBlock x:Name="VolumeReadout" Margin="8,0,0,0" VerticalAlignment="Center"
+                                   Opacity="0.8" Width="36" />
                         <ui:ToggleSwitch x:Name="MuteToggle" Content="Muet" Margin="8,0,0,0" />
                     </StackPanel>
                 </StackPanel>
@@ -72,9 +74,15 @@
 
                 <StackPanel Grid.Column="0" Grid.Row="1" Margin="0,8,8,0">
                     <TextBlock Text="Vitesse" FontSize="13" Margin="0,0,0,4" />
-                    <Slider x:Name="SpeedSlider" Minimum="0.25" Maximum="4.0"
-                            TickFrequency="0.25" SmallChange="0.25" Width="120"
-                            IsSnapToTickEnabled="True" />
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="Speed05" Content="0.5×" GroupName="Speed"
+                                     Margin="0,0,8,0" />
+                        <RadioButton x:Name="Speed10" Content="1×" GroupName="Speed"
+                                     Margin="0,0,8,0" />
+                        <RadioButton x:Name="Speed15" Content="1.5×" GroupName="Speed"
+                                     Margin="0,0,8,0" />
+                        <RadioButton x:Name="Speed20" Content="2×" GroupName="Speed" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Grid.Row="1" Margin="8,8,0,0">
@@ -87,6 +95,10 @@
             <ui:ToggleSwitch x:Name="PauseToggle" Content="Pause" Click="OnPauseToggle" />
             <ui:ToggleSwitch x:Name="AutoStartToggle" Content="Démarrer avec Windows"
                              Margin="24,0,0,0" Click="OnAutoStartToggle" />
+            <Button Content="Retirer le fond d'écran" Margin="24,0,0,0"
+                    Padding="8,4" Click="OnRemoveWallpaper" />
+            <Button Content="Quitter" Margin="8,0,0,0"
+                    Padding="8,4" Click="OnQuit" />
         </StackPanel>
     </Grid>
 </ui:FluentWindow>

@@ -35,9 +35,12 @@ public class Settings
         set => _speed = value switch { < 0.25 => 0.25, > 4.0 => 4.0, _ => value };
     }
 
-    private static readonly string Dir =
+    /// <summary>Remplace le dossier %LocalAppData%\Wallflow pour Load/Save. Isolation des tests uniquement.</summary>
+    public static string? DirOverride { get; set; }
+
+    private static string Dir => DirOverride ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wallflow");
-    private static readonly string FilePath = Path.Combine(Dir, "settings.json");
+    private static string FilePath => Path.Combine(Dir, "settings.json");
 
     public static Settings Load()
     {

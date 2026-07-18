@@ -7,5 +7,6 @@ public interface IPlayerManager
     void ResumeAll();
     void ApplySettings(Settings settings);
     void Rebuild();
+    void Clear();
     void Dispose();
 }

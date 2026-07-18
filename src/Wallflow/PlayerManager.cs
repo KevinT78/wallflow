@@ -45,6 +45,14 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
         if (_current != null) Load(_current);
     }
 
+    /// <summary>Retirer le fond d'écran : teardown des players + retour au bureau natif. L'app reste vivante.</summary>
+    public void Clear()
+    {
+        DisposePlayers();
+        _current = null;
+        WallpaperHost.RestoreDesktop();
+    }
+
     private void EnsurePlayers()
     {
         if (_entries.Count > 0) return;
@@ -77,5 +85,10 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
         }
     }
 
-    public void Dispose() => DisposePlayers();
+    // Quitter : mêmes symptômes qu'un Clear (bureau blanc sinon), mais l'app se termine derrière.
+    public void Dispose()
+    {
+        DisposePlayers();
+        WallpaperHost.RestoreDesktop();
+    }
 }

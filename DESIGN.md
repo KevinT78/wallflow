@@ -27,7 +27,18 @@ Source de vérité produit. Tout écart doit être argumenté ici avant d'être 
 
 - Sombre, sobre, langage Fluent/Windows 11 (WPF-UI ou équivalent) : coins arrondis, accent discret.
 - L'app s'efface : les vignettes des wallpapers sont le visuel principal.
-- Une seule fenêtre, pas d'écran de réglages en v1 (les 2 toggles — auto-start, pause — vivent dans le menu tray ou la fenêtre).
+- Une seule fenêtre, pas d'écran de réglages dédié (les toggles et actions rapides vivent dans le
+  menu tray ou la fenêtre, pas dans un écran de settings séparé).
+
+### Écart : élargissement de l'UI « minimale » (issue 005, 2026-07-18)
+
+La fenêtre et le menu tray gagnent deux actions supplémentaires — **Retirer le fond d'écran** et
+**Quitter** (déjà dans le tray, ajouté à la fenêtre). Justification : le seul « Quitter » existant
+(tray uniquement) laissait un bureau blanc au clic (bug — le fond natif Windows ne réapparaît pas
+tout seul sans repaint explicite) et n'offrait aucun moyen d'arrêter le fond sans fermer l'app. Ce
+n'est pas un écran de réglages : deux boutons d'action, dans la même fenêtre unique. Le compteur de
+boutons de la fenêtre principale passe de 0 (v1 initiale) à 2 ; jugé toujours « minimal » au sens du
+non-objectif (pas d'écran dédié, pas de settings avancés).
 
 ## Points de vigilance connus
 

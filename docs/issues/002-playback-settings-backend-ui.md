@@ -1,5 +1,7 @@
 # Issue 002 — Tous les réglages de lecture : modèle + backend + UI fenêtre
 
+> **Statut : ✅ Implémentée** (commits ce90784, f52f6ef, 46b6b16, dfd73bf)
+
 ## What to build
 
 Ajouter les 4 réglages de lecture (Volume + Mute, Cadrage, Boucle, Vitesse) de bout en bout :
@@ -18,22 +20,22 @@ immédiatement sans redémarrage.
 
 ## Acceptance criteria
 
-- [ ] `Settings` a les 5 nouvelles propriétés avec leurs valeurs par défaut :
+- [x] `Settings` a les 5 nouvelles propriétés avec leurs valeurs par défaut :
       `Volume=100`, `Muted=false`, `VideoFit="cover"`, `Loop=true`, `Speed=1.0`
-- [ ] `MpvPlayer` a des méthodes `ApplyVolume`, `ApplyVideoFit`, `ApplyLoop`, `ApplySpeed`
+- [x] `MpvPlayer` a des méthodes `ApplyVolume`, `ApplyVideoFit`, `ApplyLoop`, `ApplySpeed`
       qui modifient les propriétés mpv à chaud
-- [ ] `MpvPlayer` applique les settings au moment du `Load` (constructeur ou appel explicite)
-- [ ] `IPlayerManager.ApplySettings(Settings)` propage à tous les players
-- [ ] `AppService.ApplyPlaybackSettings()` sauvegarde `Settings` + appelle
+- [x] `MpvPlayer` applique les settings au moment du `Load` (constructeur ou appel explicite)
+- [x] `IPlayerManager.ApplySettings(Settings)` propage à tous les players
+- [x] `AppService.ApplyPlaybackSettings()` sauvegarde `Settings` + appelle
       `PlayerManager.ApplySettings`
-- [ ] UI fenêtre : une section de réglages entre la grille des récents et les toggles existants
+- [x] UI fenêtre : une section de réglages entre la grille des récents et les toggles existants
       avec slider volume + mute, radios cadrage, toggle boucle, slider vitesse
-- [ ] Les contrôles UI sont initialisés depuis les settings chargés au démarrage
-- [ ] Tout changement dans l'UI déclenche `AppService.ApplyPlaybackSettings()`
-- [ ] Les valeurs hors limites sont clampées
-- [ ] `dotnet build` réussi
-- [ ] Tests : `Settings` round-trip JSON (valeurs par défaut, limites toutes les propriétés)
-- [ ] Tests : `AppService.ApplyPlaybackSettings()` propage bien à `IPlayerManager` (mock)
+- [x] Les contrôles UI sont initialisés depuis les settings chargés au démarrage
+- [x] Tout changement dans l'UI déclenche `AppService.ApplyPlaybackSettings()`
+- [x] Les valeurs hors limites sont clampées
+- [x] `dotnet build` réussi
+- [x] Tests : `Settings` round-trip JSON (valeurs par défaut, limites toutes les propriétés)
+- [x] Tests : `AppService.ApplyPlaybackSettings()` propage bien à `IPlayerManager` (mock)
 
 ## Blocked by
 

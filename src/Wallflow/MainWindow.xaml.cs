@@ -21,7 +21,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         FitCover.Checked += OnVideoFitChanged;
         FitFit.Checked += OnVideoFitChanged;
         FitFill.Checked += OnVideoFitChanged;
-        SpeedSlider.ValueChanged += OnSpeedChanged;
+        Speed05.Checked += OnSpeedChanged;
+        Speed10.Checked += OnSpeedChanged;
+        Speed15.Checked += OnSpeedChanged;
+        Speed20.Checked += OnSpeedChanged;
         LoopToggle.Click += OnLoopToggle;
 
         _service.StateChanged += () => Dispatcher.Invoke(RefreshUi);
@@ -36,6 +39,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         AutoStartToggle.IsChecked = _service.Settings.AutoStart;
 
         VolumeSlider.Value = _service.Settings.Volume;
+        VolumeReadout.Text = $"{_service.Settings.Volume}%";
         MuteToggle.IsChecked = _service.Settings.Muted;
         switch (_service.Settings.VideoFit)
         {
@@ -43,7 +47,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             case "fit": FitFit.IsChecked = true; break;
             case "fill": FitFill.IsChecked = true; break;
         }
-        SpeedSlider.Value = _service.Settings.Speed;
+        switch (SpeedPaliers.Nearest(_service.Settings.Speed))
+        {
+            case 0.5: Speed05.IsChecked = true; break;
+            case 1.0: Speed10.IsChecked = true; break;
+            case 1.5: Speed15.IsChecked = true; break;
+            case 2.0: Speed20.IsChecked = true; break;
+        }
         LoopToggle.IsChecked = _service.Settings.Loop;
 
         _refreshing = false;
@@ -95,6 +105,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnVolumeChanged(object sender, RoutedEventArgs e)
     {
+        VolumeReadout.Text = $"{(int)VolumeSlider.Value}%";
         if (_refreshing) return;
         _service.Settings.Volume = (int)VolumeSlider.Value;
         _service.Settings.Muted = MuteToggle.IsChecked == true;
@@ -119,7 +130,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void OnSpeedChanged(object sender, RoutedEventArgs e)
     {
         if (_refreshing) return;
-        _service.Settings.Speed = SpeedSlider.Value;
+        _service.Settings.Speed = sender switch
+        {
+            _ when sender == Speed05 => 0.5,
+            _ when sender == Speed10 => 1.0,
+            _ when sender == Speed15 => 1.5,
+            _ => 2.0,
+        };
         _service.ApplyPlaybackSettings();
     }
 
@@ -134,6 +151,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnAutoStartToggle(object sender, RoutedEventArgs e) =>
         _service.SetAutoStart(AutoStartToggle.IsChecked == true);
+
+    private void OnRemoveWallpaper(object sender, RoutedEventArgs e) =>
+        _service.RemoveWallpaper();
+
+    private void OnQuit(object sender, RoutedEventArgs e) =>
+        Application.Current.Shutdown();
 
     // Fermer = cacher : l'app vit dans le tray.
     protected override void OnClosing(CancelEventArgs e)

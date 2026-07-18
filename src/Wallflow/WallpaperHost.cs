@@ -31,8 +31,15 @@ public static class WallpaperHost
     [DllImport("user32.dll")]
     private static extern bool DestroyWindow(IntPtr hwnd);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint action, uint param, string? vparam, uint winIni);
+
     private const int WS_CHILD = 0x40000000;
     private const int WS_VISIBLE = 0x10000000;
+
+    private const uint SPI_SETDESKWALLPAPER = 0x0014;
+    private const uint SPIF_UPDATEINIFILE = 0x01;
+    private const uint SPIF_SENDCHANGE = 0x02;
 
     private static IntPtr _workerW;
 
@@ -73,4 +80,11 @@ public static class WallpaperHost
     {
         if (hwnd != IntPtr.Zero) DestroyWindow(hwnd);
     }
+
+    /// <summary>
+    /// Repeint le fond natif Windows enregistré. Sans ça, détruire les fenêtres hôtes laisse
+    /// le bureau blanc : le fond natif ne réapparaît pas tout seul.
+    /// </summary>
+    public static void RestoreDesktop() =>
+        SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, null, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
 }

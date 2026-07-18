@@ -75,6 +75,15 @@ public sealed class AppService
         return true;
     }
 
+    /// <summary>« Retirer le fond d'écran » : rend le bureau natif, app vivante dans le tray. Ré-applicable via Récents.</summary>
+    public void RemoveWallpaper()
+    {
+        Settings.LastWallpaper = null;
+        _players.Clear();
+        Settings.Save();
+        StateChanged?.Invoke();
+    }
+
     public void SetAutoStart(bool enabled)
     {
         Settings.AutoStart = enabled;
