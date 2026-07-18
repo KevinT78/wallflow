@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au stade kickoff (2026-07-18), avant tout code — dérivé de DESIGN.md et du system design._
-<!-- doc-provenance: commit=none generated=2026-07-18 stage=kickoff -->
+> _Généré au commit `46b6b16` (2026-07-18)._
+<!-- doc-provenance: commit=46b6b16 generated=2026-07-18 -->
 
 ## En une phrase
 
@@ -33,6 +33,12 @@ mindmap
       Bouton pause manuelle
       Pause auto en plein écran
       Pause auto sur batterie
+    🔊 Lecture
+      Volume et muet
+      Cadrage cover, fit ou fill
+      Boucle on/off
+      Vitesse 0.25x à 4x
+      Volume aussi depuis le tray
     ⚙️ Réglages
       Démarrage avec Windows
       Restauration au démarrage
@@ -57,7 +63,9 @@ flowchart TD
 ```
 
 1. Premier lancement : une petite fenêtre sombre avec une zone « dépose ton fichier ».
-2. L'utilisateur glisse un fichier — il est appliqué immédiatement, en boucle et sans son.
+2. L'utilisateur glisse un fichier — il est appliqué immédiatement (par défaut : en boucle et sans
+   son ; volume, cadrage, boucle et vitesse se règlent depuis la fenêtre, le volume aussi depuis la
+   zone de notification).
 3. Wallflow s'efface dans la zone de notification ; l'utilisateur n'y repense plus.
 4. Quand un jeu ou une vidéo passe en plein écran, ou que le portable passe sur batterie,
    l'animation se met en pause toute seule — zéro impact sur les performances ou l'autonomie.
@@ -94,5 +102,5 @@ flowchart LR
 |--------|------|
 | Fenêtre + icône de notification | Le seul point de contact : déposer un fichier, revoir les récents, mettre en pause. |
 | Cœur de l'application | Décide quoi jouer et quand se mettre en pause ; surveille plein écran et batterie. |
-| Lecteur mpv | Décode et affiche tous les formats (GIF, WebP, vidéo, image), en boucle et sans son. |
+| Lecteur mpv | Décode et affiche tous les formats (GIF, WebP, vidéo, image), selon les réglages de lecture (volume, cadrage, boucle, vitesse). |
 | Sauvegarde locale | Un petit fichier sur le PC : wallpaper courant, récents, réglages. Rien ne quitte la machine. |

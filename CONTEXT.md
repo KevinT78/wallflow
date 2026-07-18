@@ -8,8 +8,8 @@ Ce fichier est un glossaire — le vocabulaire canonique du domaine, rien d'autr
 > **Vue produit** : [docs/VUE-PRODUIT.md](./docs/VUE-PRODUIT.md) · **Architecture technique** :
 > [docs/ARCHITECTURE-TECHNIQUE.md](./docs/ARCHITECTURE-TECHNIQUE.md) · **Décisions produit** :
 > [DESIGN.md](./DESIGN.md).
-> _Généré au stade kickoff (2026-07-18), avant tout code — dérivé de DESIGN.md et du system design._
-<!-- doc-provenance: commit=none generated=2026-07-18 stage=kickoff -->
+> _Généré au commit `46b6b16` (2026-07-18)._
+<!-- doc-provenance: commit=46b6b16 generated=2026-07-18 -->
 
 ## Langage
 
@@ -24,8 +24,9 @@ _Avoid_: user, client
 
 **Wallpaper** :
 Le fichier média appliqué en fond d'écran : GIF, WebP animé, mp4/webm ou image fixe. Un seul
-`Wallpaper` actif à la fois, affiché à l'identique sur tous les écrans, en boucle, muet, cadré
-« cover ». C'est le dernier appliqué qui est restauré au démarrage de Windows.
+`Wallpaper` actif à la fois, affiché à l'identique sur tous les écrans, selon les `Réglages de
+lecture` courants (par défaut : en boucle, muet, cadré « cover », vitesse normale). C'est le
+dernier appliqué qui est restauré au démarrage de Windows.
 _Avoid_: fond d'écran animé vs statique (pas de distinction dans le produit : même objet), thème,
 skin
 
@@ -44,9 +45,16 @@ Arrêt de la lecture décidé par l'application quand une app est en plein écra
 batterie / économie d'énergie. Se lève seule quand la condition disparaît.
 
 **Réglages** :
-Les deux seuls interrupteurs du produit : démarrage avec Windows, et pause auto. Persiste aussi le
-`Wallpaper` courant et les `Récents`.
+Ce que le produit persiste et restaure : démarrage avec Windows, pause auto, les `Réglages de
+lecture`, le `Wallpaper` courant et les `Récents`.
 _Avoid_: préférences, options, settings (dans la prose)
+
+**Réglages de lecture** :
+Les quatre réglages qui gouvernent comment le `Wallpaper` est joué : **volume** (0-100 + muet),
+**cadrage** (cover / fit / fill), **boucle** (on/off) et **vitesse** (0.25x–4x). Globaux (pas par
+wallpaper), appliqués immédiatement, persistés. Le volume et le muet sont aussi réglables depuis le
+menu du tray.
+_Avoid_: options de lecture, paramètres vidéo
 
 ### Faux-amis à ne pas confondre
 

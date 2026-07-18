@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `4bf8184` (2026-07-18)._
-<!-- doc-provenance: commit=4bf8184 generated=2026-07-18 -->
+> _Généré au commit `46b6b16` (2026-07-18)._
+<!-- doc-provenance: commit=46b6b16 generated=2026-07-18 -->
 
 ## Stack
 
@@ -18,6 +18,7 @@
 | Thème | WPF-UI 4.3.0 (FluentWindow, Mica, thème sombre) | `MainWindow.xaml` |
 | Vignettes | API shell `IShellItemImageFactory` | `Thumbnail.cs` |
 | Persistance | `System.Text.Json`, fichier unique | `%LOCALAPPDATA%\Wallflow\settings.json` |
+| Tests | xunit, mock manuel de `IPlayerManager` | `tests/Wallflow.Tests/` |
 
 Formats acceptés (`AppService.SupportedExtensions`) : `.gif .webp .mp4 .webm .mkv .png .jpg .jpeg .bmp`
 — `.mkv` s'est ajouté au design initial (gratuit via mpv).
@@ -31,30 +32,40 @@ sérialisé sur disque.
 
 ```mermaid
 classDiagram
+    class IPlayerManager {
+        <<interface>>
+        Load(path)
+        PauseAll()
+        ResumeAll()
+        ApplySettings(settings)
+        Rebuild()
+        Dispose()
+    }
     class AppService {
         Settings settings
         bool manualPause
         bool autoPause
         Apply(path)
-        SetManualPause(bool)
-        OnActivityChanged(shouldPause)
+        ApplyPlaybackSettings()
+        SetAutoStart(bool)
     }
     class PlayerManager {
         MpvPlayer[] players
-        Load(path)
-        PauseAll()
-        ResumeAll()
-        RebuildForDisplays()
+        Settings settings
     }
     class MpvPlayer {
         IntPtr parentHwnd
         Load(path)
         Pause()
         Resume()
+        ApplyVolume(vol, muted)
+        ApplyVideoFit(fit)
+        ApplyLoop(loop)
+        ApplySpeed(speed)
         Dispose()
     }
     class WallpaperHost {
-        GetParentHwndFor(screen) IntPtr
+        CreateHostFor(screen) IntPtr
     }
     class ActivityMonitor {
         event ShouldPauseChanged
@@ -64,8 +75,14 @@ classDiagram
         string[] recents
         bool autoStart
         bool autoPauseEnabled
+        int volume
+        bool muted
+        string videoFit
+        bool loop
+        double speed
     }
-    AppService "1" --> "1" PlayerManager : pilote
+    IPlayerManager <|.. PlayerManager
+    AppService "1" --> "1" IPlayerManager : pilote
     AppService "1" --> "1" Settings : lit / écrit
     AppService <.. ActivityMonitor : notifie
     PlayerManager "1" --> "*" MpvPlayer : un par écran
@@ -74,7 +91,8 @@ classDiagram
 
 Frontières (décision figée) : tout le WinAPI est confiné dans `WallpaperHost` + `ActivityMonitor`,
 tout libmpv dans `MpvPlayer`. `AppService` et `PlayerManager` sont du .NET pur, testables sans
-écran. Pas d'interfaces ni de DI : classes concrètes instanciées par `AppService`.
+écran. Un seul seam de DI : `AppService` reçoit un `IPlayerManager` (interface extraite pour les
+tests, mock dans `tests/Wallflow.Tests/`) ; le reste est instancié en concret.
 
 ## Cycle de vie de la lecture
 
@@ -124,11 +142,32 @@ frontière de confiance du produit : tout le reste est local et mono-utilisateur
    zip portable déplaçable sans casser l'auto-start (décision DESIGN.md).
 4. Démarrage dans le tray, sans fenêtre ; si `lastWallpaper` existe encore sur disque → `Apply`.
 
+### Appliquer un réglage de lecture
+
+Déclencheurs : un contrôle de la section réglages de `MainWindow` (slider volume, toggle muet,
+radios cadrage, toggle boucle, slider vitesse) ou le sous-menu Volume du tray (`App.BuildTray` :
+muet + presets 25/50/75/100 %).
+
+```mermaid
+flowchart TD
+    A["Contrôle fenêtre ou menu tray"] --> B["AppService.ApplyPlaybackSettings()"]
+    B --> C["Settings.Save() — écriture settings.json"]
+    B --> D["IPlayerManager.ApplySettings(settings)<br/>sur chaque MpvPlayer"]
+    D --> E["ApplyVolume / ApplyVideoFit /<br/>ApplyLoop / ApplySpeed (propriétés mpv à chaud)"]
+    B --> F["StateChanged → fenêtre et tray se resynchronisent"]
+```
+
+`PlayerManager` mémorise les derniers `Settings` reçus et les **réapplique à chaque `Load`** :
+les players fraîchement créés (démarrage, `Rebuild`) partent des défauts figés du constructeur
+`MpvPlayer`, pas de `settings.json`. `AppService` pousse les settings au manager dès sa
+construction. Les valeurs hors limites sont clampées dans les setters de `Settings`
+(volume 0-100, vitesse 0.25-4.0, cadrage restreint à cover/fit/fill).
+
 ### Reconstruction multi-écran
 
-`SystemEvents.DisplaySettingsChanged` → `PlayerManager.RebuildForDisplays()` : dispose tous les
-`MpvPlayer`, ré-énumère les écrans, recrée un player par écran, ré-applique le wallpaper courant.
-Brutal mais simple ; un changement d'écran est un événement rare.
+`SystemEvents.DisplaySettingsChanged` → `PlayerManager.Rebuild()` : dispose tous les
+`MpvPlayer`, ré-énumère les écrans, recrée un player par écran, ré-applique le wallpaper courant
+et les réglages de lecture. Brutal mais simple ; un changement d'écran est un événement rare.
 
 ## Intégration bureau (WorkerW)
 
@@ -140,8 +179,11 @@ l'option mpv `wid` (mpv rend directement dedans — pas de render API, pas d'Ope
 > ⚠️ Technique non documentée par Microsoft : peut casser sur une mise à jour de Windows.
 > Référence d'implémentation : le code source de Lively Wallpaper.
 
-Options mpv figées au lancement (défauts sans réglages, décision DESIGN.md) :
-`loop=inf`, `mute=yes`, `panscan=1.0` (cover), `hwdec=auto`.
+Options mpv posées au constructeur (défauts sûrs, écrasés ensuite par `ApplySettings`) :
+`loop-file=inf`, `mute=yes`, `panscan=1.0` (cover), `hwdec=auto`. Deux subtilités relevées en
+code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se pilote via
+`panscan` + `keepaspect` (cover = panscan 1 ; fit = panscan 0 ; fill = keepaspect no) — et la
+vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait rejeté par mpv).
 
 ## Surveillance d'activité
 
@@ -159,10 +201,15 @@ Un seul fichier, `%LOCALAPPDATA%\Wallflow\settings.json`, réécrit en entier à
 
 ```json
 {
-  "lastWallpaper": "C:\\Users\\...\\ocean.mp4",
-  "recents": ["...max 10 chemins, plus récent en tête..."],
-  "autoStart": true,
-  "autoPauseEnabled": true
+  "LastWallpaper": "C:\\Users\\...\\ocean.mp4",
+  "Recents": ["...max 10 chemins, plus récent en tête..."],
+  "AutoStart": true,
+  "AutoPauseEnabled": true,
+  "Volume": 100,
+  "Muted": false,
+  "VideoFit": "cover",
+  "Loop": true,
+  "Speed": 1.0
 }
 ```
 
