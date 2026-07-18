@@ -33,25 +33,60 @@ public partial class App : Application
 
     private TaskbarIcon BuildTray()
     {
-        var pause = new System.Windows.Controls.MenuItem { Header = "Pause", IsCheckable = true };
-        pause.Click += (_, _) => _service!.ManualPause = pause.IsChecked;
-        _service!.StateChanged += () => Dispatcher.Invoke(() => pause.IsChecked = _service.ManualPause);
-
         var open = new System.Windows.Controls.MenuItem { Header = "Ouvrir" };
         open.Click += (_, _) => ShowWindow();
 
+        var pause = new System.Windows.Controls.MenuItem { Header = "Pause", IsCheckable = true };
+        pause.Click += (_, _) => _service!.ManualPause = pause.IsChecked;
+
+        var mute = new System.Windows.Controls.MenuItem { Header = "Muet", IsCheckable = true };
+        mute.Click += (_, _) =>
+        {
+            _service!.Settings.Muted = mute.IsChecked;
+            _service.ApplyPlaybackSettings();
+        };
+
+        var vol25 = new System.Windows.Controls.MenuItem { Header = "25%" };
+        vol25.Click += (_, _) => SetTrayVolume(25);
+        var vol50 = new System.Windows.Controls.MenuItem { Header = "50%" };
+        vol50.Click += (_, _) => SetTrayVolume(50);
+        var vol75 = new System.Windows.Controls.MenuItem { Header = "75%" };
+        vol75.Click += (_, _) => SetTrayVolume(75);
+        var vol100 = new System.Windows.Controls.MenuItem { Header = "100%" };
+        vol100.Click += (_, _) => SetTrayVolume(100);
+
+        var volume = new System.Windows.Controls.MenuItem
+        {
+            Header = "Volume",
+            Items = { mute, new System.Windows.Controls.Separator(), vol25, vol50, vol75, vol100 },
+        };
+
         var quit = new System.Windows.Controls.MenuItem { Header = "Quitter" };
         quit.Click += (_, _) => Shutdown();
+
+        _service!.StateChanged += () => Dispatcher.Invoke(() =>
+        {
+            pause.IsChecked = _service.ManualPause;
+            mute.IsChecked = _service.Settings.Muted;
+            volume.Header = $"Volume : {_service.Settings.Volume}%";
+        });
 
         var tray = new TaskbarIcon
         {
             ToolTipText = "Wallflow",
             Icon = System.Drawing.SystemIcons.Application,
-            ContextMenu = new System.Windows.Controls.ContextMenu { Items = { open, pause, quit } },
+            ContextMenu = new System.Windows.Controls.ContextMenu { Items = { open, pause, volume, quit } },
         };
         tray.TrayLeftMouseUp += (_, _) => ShowWindow();
         tray.ForceCreate();
         return tray;
+    }
+
+    private void SetTrayVolume(int vol)
+    {
+        _service!.Settings.Volume = vol;
+        _service.Settings.Muted = false;
+        _service.ApplyPlaybackSettings();
     }
 
     private void ShowWindow()

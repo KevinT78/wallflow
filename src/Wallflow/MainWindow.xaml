@@ -13,6 +13,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <ui:TitleBar Grid.Row="0" Title="Wallflow" ShowMaximize="False" />
@@ -41,7 +42,53 @@
             </ItemsControl>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="16,8,16,16">
+        <Border Grid.Row="3" Margin="16,0,16,8" Padding="12" CornerRadius="8"
+                BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                Background="{DynamicResource ControlFillColorDefaultBrush}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,8,8">
+                    <TextBlock Text="Volume" FontSize="13" Margin="0,0,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Width="120"
+                                ValueChanged="OnVolumeChanged" />
+                        <ui:ToggleSwitch x:Name="MuteToggle" Content="Muet" Margin="8,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Grid.Row="0" Margin="8,0,0,8">
+                    <TextBlock Text="Cadrage" FontSize="13" Margin="0,0,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="FitCover" Content="Cover" GroupName="VideoFit"
+                                     Margin="0,0,8,0" />
+                        <RadioButton x:Name="FitFit" Content="Fit" GroupName="VideoFit"
+                                     Margin="0,0,8,0" />
+                        <RadioButton x:Name="FitFill" Content="Fill" GroupName="VideoFit" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="0" Grid.Row="1" Margin="0,8,8,0">
+                    <TextBlock Text="Vitesse" FontSize="13" Margin="0,0,0,4" />
+                    <Slider x:Name="SpeedSlider" Minimum="0.25" Maximum="4.0"
+                            TickFrequency="0.25" SmallChange="0.25" Width="120"
+                            ValueChanged="OnSpeedChanged" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Grid.Row="1" Margin="8,8,0,0">
+                    <ui:ToggleSwitch x:Name="LoopToggle" Content="Boucle infinie" Margin="0,8,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="16,0,16,16">
             <ui:ToggleSwitch x:Name="PauseToggle" Content="Pause" Click="OnPauseToggle" />
             <ui:ToggleSwitch x:Name="AutoStartToggle" Content="Démarrer avec Windows"
                              Margin="24,0,0,0" Click="OnAutoStartToggle" />

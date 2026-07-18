@@ -9,19 +9,44 @@ namespace Wallflow;
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly AppService _service;
+    private bool _refreshing;
 
     public MainWindow(AppService service)
     {
         _service = service;
         InitializeComponent();
+
+        VolumeSlider.ValueChanged += OnVolumeChanged;
+        MuteToggle.Click += OnMuteToggle;
+        FitCover.Checked += OnVideoFitChanged;
+        FitFit.Checked += OnVideoFitChanged;
+        FitFill.Checked += OnVideoFitChanged;
+        SpeedSlider.ValueChanged += OnSpeedChanged;
+        LoopToggle.Click += OnLoopToggle;
+
         _service.StateChanged += () => Dispatcher.Invoke(RefreshUi);
         RefreshUi();
     }
 
     private void RefreshUi()
     {
+        _refreshing = true;
+
         PauseToggle.IsChecked = _service.ManualPause;
         AutoStartToggle.IsChecked = _service.Settings.AutoStart;
+
+        VolumeSlider.Value = _service.Settings.Volume;
+        MuteToggle.IsChecked = _service.Settings.Muted;
+        switch (_service.Settings.VideoFit)
+        {
+            case "cover": FitCover.IsChecked = true; break;
+            case "fit": FitFit.IsChecked = true; break;
+            case "fill": FitFill.IsChecked = true; break;
+        }
+        SpeedSlider.Value = _service.Settings.Speed;
+        LoopToggle.IsChecked = _service.Settings.Loop;
+
+        _refreshing = false;
 
         RecentsList.Items.Clear();
         foreach (var path in _service.Recents)
@@ -66,6 +91,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         };
         if (dialog.ShowDialog() == true)
             TryApply(dialog.FileName);
+    }
+
+    private void OnVolumeChanged(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        _service.Settings.Volume = (int)VolumeSlider.Value;
+        _service.Settings.Muted = MuteToggle.IsChecked == true;
+        _service.ApplyPlaybackSettings();
+    }
+
+    private void OnMuteToggle(object sender, RoutedEventArgs e)
+    {
+        _service.Settings.Muted = MuteToggle.IsChecked == true;
+        _service.ApplyPlaybackSettings();
+    }
+
+    private void OnVideoFitChanged(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        if (FitCover.IsChecked == true) _service.Settings.VideoFit = "cover";
+        else if (FitFit.IsChecked == true) _service.Settings.VideoFit = "fit";
+        else if (FitFill.IsChecked == true) _service.Settings.VideoFit = "fill";
+        _service.ApplyPlaybackSettings();
+    }
+
+    private void OnSpeedChanged(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        _service.Settings.Speed = SpeedSlider.Value;
+        _service.ApplyPlaybackSettings();
+    }
+
+    private void OnLoopToggle(object sender, RoutedEventArgs e)
+    {
+        _service.Settings.Loop = LoopToggle.IsChecked == true;
+        _service.ApplyPlaybackSettings();
     }
 
     private void OnPauseToggle(object sender, RoutedEventArgs e) =>
