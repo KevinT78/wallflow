@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `46b6b16` (2026-07-18)._
-<!-- doc-provenance: commit=46b6b16 generated=2026-07-18 -->
+> _Généré au commit `e1fcec3` (2026-07-18)._
+<!-- doc-provenance: commit=e1fcec3 generated=2026-07-18 -->
 
 ## En une phrase
 
@@ -34,11 +34,16 @@ mindmap
       Pause auto en plein écran
       Pause auto sur batterie
     🔊 Lecture
-      Volume et muet
+      Volume et muet, avec pourcentage
       Cadrage cover, fit ou fill
       Boucle on/off
-      Vitesse 0.25x à 4x
+      Vitesse par paliers 0.5x à 2x
       Volume aussi depuis le tray
+    🧹 Retirer / Quitter
+      Retirer le fond, le bureau natif revient
+      L'app reste dans la zone de notification
+      Quitter rend aussi le fond, sans bureau blanc
+      Les deux accessibles depuis la fenêtre
     ⚙️ Réglages
       Démarrage avec Windows
       Restauration au démarrage
@@ -70,6 +75,9 @@ flowchart TD
 4. Quand un jeu ou une vidéo passe en plein écran, ou que le portable passe sur batterie,
    l'animation se met en pause toute seule — zéro impact sur les performances ou l'autonomie.
 5. Au redémarrage de Windows, le wallpaper revient sans aucune action.
+6. À tout moment, **Retirer le fond d'écran** (depuis la fenêtre ou la zone de notification) rend le
+   bureau Windows d'origine tout en gardant l'application prête à ré-appliquer ; **Quitter** ferme
+   l'application en restaurant lui aussi le fond — jamais de bureau blanc.
 
 ## Les concepts en relation
 
@@ -87,8 +95,10 @@ graph LR
 
 Wallflow est une application de bureau autonome : pas de serveur, pas de compte, pas de connexion
 internet. Elle glisse sa propre fenêtre d'affichage *derrière* les icônes du bureau — le fond
-d'écran natif de Windows n'est pas modifié — et confie la lecture des fichiers à mpv, un lecteur
-multimédia open source réputé, embarqué dans l'application.
+d'écran natif de Windows n'est jamais remplacé, seulement recouvert — et confie la lecture des
+fichiers à mpv, un lecteur multimédia open source réputé, embarqué dans l'application. Quand on
+retire le fond ou qu'on quitte, l'application redemande à Windows de repeindre ce fond natif, pour
+qu'il réapparaisse intact.
 
 ```mermaid
 flowchart LR

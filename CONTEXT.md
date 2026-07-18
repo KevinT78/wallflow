@@ -9,7 +9,7 @@ Ce fichier est un glossaire — le vocabulaire canonique du domaine, rien d'autr
 > [docs/ARCHITECTURE-TECHNIQUE.md](./docs/ARCHITECTURE-TECHNIQUE.md) · **Décisions produit** :
 > [DESIGN.md](./DESIGN.md).
 > _Généré au commit `46b6b16` (2026-07-18)._
-<!-- doc-provenance: commit=46b6b16 generated=2026-07-18 -->
+<!-- doc-provenance: commit=e1fcec3 generated=2026-07-18 -->
 
 ## Langage
 

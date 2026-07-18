@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `46b6b16` (2026-07-18)._
-<!-- doc-provenance: commit=46b6b16 generated=2026-07-18 -->
+> _Généré au commit `e1fcec3` (2026-07-18)._
+<!-- doc-provenance: commit=e1fcec3 generated=2026-07-18 -->
 
 ## Stack
 
@@ -14,11 +14,11 @@
 | Application | C# / .NET 8 WPF, TFM `net8.0-windows10.0.19041.0` (min. 17763), x64 | `src/Wallflow/` |
 | Lecture média | libmpv (`libmpv-2.dll`, build shinchiro, dans `lib/` hors git), embedding `wid` | `MpvPlayer.cs` |
 | Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost.cs`, `ActivityMonitor.cs` |
-| UI tray | H.NotifyIcon.Wpf 2.3.0 | `App.xaml.cs` (`BuildTray`) |
+| UI tray | H.NotifyIcon.Wpf 2.3.0 (icône via `Icon.ExtractAssociatedIcon`, efficiency mode off) | `App.xaml.cs` (`BuildTray`) |
 | Thème | WPF-UI 4.3.0 (FluentWindow, Mica, thème sombre) | `MainWindow.xaml` |
 | Vignettes | API shell `IShellItemImageFactory` | `Thumbnail.cs` |
 | Persistance | `System.Text.Json`, fichier unique | `%LOCALAPPDATA%\Wallflow\settings.json` |
-| Tests | xunit, mock manuel de `IPlayerManager` | `tests/Wallflow.Tests/` |
+| Tests | xunit, mock manuel de `IPlayerManager`, `Settings.DirOverride` pour isoler le `settings.json` réel | `tests/Wallflow.Tests/` |
 
 Formats acceptés (`AppService.SupportedExtensions`) : `.gif .webp .mp4 .webm .mkv .png .jpg .jpeg .bmp`
 — `.mkv` s'est ajouté au design initial (gratuit via mpv).
@@ -39,6 +39,7 @@ classDiagram
         ResumeAll()
         ApplySettings(settings)
         Rebuild()
+        Clear()
         Dispose()
     }
     class AppService {
@@ -47,6 +48,7 @@ classDiagram
         bool autoPause
         Apply(path)
         ApplyPlaybackSettings()
+        RemoveWallpaper()
         SetAutoStart(bool)
     }
     class PlayerManager {
@@ -66,6 +68,7 @@ classDiagram
     }
     class WallpaperHost {
         CreateHostFor(screen) IntPtr
+        RestoreDesktop()
     }
     class ActivityMonitor {
         event ShouldPauseChanged
@@ -80,6 +83,7 @@ classDiagram
         string videoFit
         bool loop
         double speed
+        static string? DirOverride
     }
     IPlayerManager <|.. PlayerManager
     AppService "1" --> "1" IPlayerManager : pilote
@@ -134,6 +138,29 @@ flowchart TD
 La validation d'entrée (existence du fichier, extension dans la liste supportée) est la seule
 frontière de confiance du produit : tout le reste est local et mono-utilisateur.
 
+### Retirer le fond d'écran / Quitter (Restauration du bureau)
+
+Détruire les fenêtres hôtes ne fait **pas** réapparaître le fond natif : Windows laisse le bureau
+blanc. La primitive `WallpaperHost.RestoreDesktop()` corrige ça —
+`SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, null, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE)` demande
+au shell de repeindre le fond enregistré.
+
+```mermaid
+flowchart TD
+    A["Retirer le fond<br/>(bouton fenêtre / menu tray)"] --> B["AppService.RemoveWallpaper()"]
+    B --> C["Settings.LastWallpaper = null"]
+    C --> D["PlayerManager.Clear()<br/>teardown players + RestoreDesktop()"]
+    D --> E["Settings.Save() + StateChanged"]
+    F["Quitter<br/>(bouton fenêtre / menu tray)"] --> G["Shutdown → OnExit"]
+    G --> H["PlayerManager.Dispose()<br/>teardown players + RestoreDesktop()"]
+```
+
+État « retiré » = **absence de wallpaper courant**, exprimée par `LastWallpaper == null` (décision B :
+aucun drapeau dédié). Le garde de démarrage existant (`si LastWallpaper existe & fichier présent →
+Apply`) rend la persistance gratuite : après un retrait, rien n'est réappliqué au boot suivant.
+`Rebuild()` (écran branché/débranché) ne restaure **pas** — il re-couvre immédiatement, éviter le
+flicker.
+
 ### Démarrage (clé `Run`)
 
 1. Windows lance `wallflow.exe` (clé `HKCU\...\Run`, écrite par l'app elle-même).
@@ -144,9 +171,15 @@ frontière de confiance du produit : tout le reste est local et mono-utilisateur
 
 ### Appliquer un réglage de lecture
 
-Déclencheurs : un contrôle de la section réglages de `MainWindow` (slider volume, toggle muet,
-radios cadrage, toggle boucle, slider vitesse) ou le sous-menu Volume du tray (`App.BuildTray` :
-muet + presets 25/50/75/100 %).
+Déclencheurs : un contrôle de la section réglages de `MainWindow` (slider volume avec readout `%`,
+toggle muet, radios cadrage, toggle boucle, **4 radios de vitesse** `0.5× · 1× · 1.5× · 2×`) ou le
+sous-menu Volume du tray (`App.BuildTray` : muet + presets 25/50/75/100 %).
+
+La vitesse s'affiche par **paliers nommés** (helper pur `SpeedPaliers`, valeurs `[0.5, 1.0, 1.5,
+2.0]`). Au refresh, la fenêtre met en évidence `SpeedPaliers.Nearest(Settings.Speed)` **sans**
+réécrire `Settings.Speed` tant que l'Utilisateur ne clique pas (garde `_refreshing`) — une valeur
+enregistrée hors palier (ex. `3.0`) n'est pas silencieusement écrasée. Le backend `Settings.Speed`
+reste continu (clamp `0.25–4.0`) : seul l'affichage se restreint aux paliers.
 
 ```mermaid
 flowchart TD
