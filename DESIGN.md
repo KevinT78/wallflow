@@ -4,9 +4,10 @@ Source de vérité produit. Tout écart doit être argumenté ici avant d'être 
 
 ## Produit
 
-- **Quoi** : app Windows distribuable qui applique un fond d'écran animé (GIF, WebP animé, mp4/webm) ou fixe, derrière les icônes du bureau.
+- **Quoi** : app Windows qui applique un fond d'écran animé (GIF, WebP animé, mp4/webm) ou fixe, derrière les icônes du bureau.
 - **Positionnement** : pas de différenciateur revendiqué face à Wallpaper Engine / Lively — l'effort est donc calibré au minimum viable, zéro feature spéculative.
-- **Non-objectifs v1** : wallpapers HTML/interactifs, bibliothèque en ligne, wallpaper différent par écran, réglages de lecture, multi-plateforme.
+- **Cible (écart 2026-07-19)** : usage **perso uniquement** — la v1 visait « distribuable » ; recalibré lors du grilling UI/UX. Conséquence : densité et rapidité d'accès priment sur la découvrabilité ; pas d'onboarding, pas de pédagogie. La distribution (zip portable) reste possible mais ne dicte plus les choix d'UI.
+- **Non-objectifs v1** : wallpapers HTML/interactifs, bibliothèque en ligne, wallpaper différent par écran, multi-plateforme. (~~réglages de lecture~~ — livrés depuis, voir écart ci-dessous.)
 
 ## Décisions figées (session de grilling 2026-07-18)
 
@@ -17,7 +18,7 @@ Source de vérité produit. Tout écart doit être argumenté ici avant d'être 
 | Stack | .NET 8 + WPF, libmpv comme moteur de lecture unique, P/Invoke pour WorkerW |
 | Multi-écran | Même wallpaper sur tous les écrans (une instance mpv par écran) |
 | Performance | Pause automatique si app en plein écran OU sur batterie/économie d'énergie. Non négociable. |
-| Lecture | Défauts figés : muet, cadrage cover, boucle infinie. Aucun réglage de lecture en v1. |
+| Lecture | Défauts : muet, cadrage cover, boucle infinie. **Écart (branche `feat/playback-settings`)** : réglages de lecture livrés — volume/muet, cadrage, vitesse par paliers, boucle (voir [docs/PRD-reglages-lecture.md](docs/PRD-reglages-lecture.md)). |
 | UI | Icône tray + fenêtre minimale : drag & drop, grille des récents, bouton pause |
 | Démarrage | Auto-start via clé registre `Run` écrite par l'app (toggle), démarre dans le tray, restaure le dernier wallpaper |
 | Distribution | Zip portable seul, GitHub Releases. Pas d'installeur, pas de Store. |
@@ -39,6 +40,61 @@ tout seul sans repaint explicite) et n'offrait aucun moyen d'arrêter le fond sa
 n'est pas un écran de réglages : deux boutons d'action, dans la même fenêtre unique. Le compteur de
 boutons de la fenêtre principale passe de 0 (v1 initiale) à 2 ; jugé toujours « minimal » au sens du
 non-objectif (pas d'écran dédié, pas de settings avancés).
+
+## Refonte de la fenêtre (session de grilling 2026-07-19)
+
+Constat : la fenêtre est devenue un « tas de contrôles » — bandeau de dépôt, récents, 4 groupes de
+réglages et 4 boutons empilés, sans hiérarchie. Direction figée ci-dessous ; le **tray est hors
+périmètre** (il couvre déjà les gestes à distance et doit rester bête et rapide).
+
+### Structure : deux zones, c'est tout
+
+**1. Grille des récents — le héros.** Le geste principal après le premier jour est « ré-appliquer
+un wallpaper » ; la grille occupe tout l'espace.
+
+- Vignettes **16:9** (~160×90), pas carrées : un wallpaper est presque toujours 16:9, le crop
+  carré le trahit.
+- **Wallpaper actif marqué** : bordure accent + petit badge sur sa vignette. C'est la *seule*
+  indication de l'état courant dans la fenêtre (choix assumé : pas de « now playing » dans la
+  barre du bas).
+- Clic = appliquer. **Clic droit** → menu contextuel minimal : « Retirer des récents »,
+  « Ouvrir l'emplacement du fichier ».
+- **Tuile « + » en première position**, au même format que les vignettes : clic = dialogue
+  Parcourir. L'état vide se résout tout seul — au premier lancement la grille ne contient que
+  cette tuile avec un hint « dépose un fichier ou clique ».
+
+**2. Barre du bas — 3 contrôles seuls**, alignés à droite, icônes Segoe Fluent :
+
+| Contrôle | Comportement |
+|---|---|
+| Play/Pause | Bouton icône, reflète et pilote la pause manuelle |
+| Volume | Icône → flyout : slider + % + toggle Muet |
+| ⚙ Réglages | Icône → flyout compact (pas un menu) : cadrage (segmented Cover/Fit/Fill), vitesse (segmented 0.5×–2×), boucle (toggle), démarrer avec Windows (toggle), séparateur, « Retirer le fond d'écran », « Quitter » |
+
+### Drag & drop
+
+- Actif sur **toute la fenêtre** (comportement actuel conservé).
+- Pendant le drag : **overlay plein cadre** « Dépose pour appliquer ».
+- **Plus de bandeau de dépôt permanent** — il ne servait qu'à signaler une capacité déjà globale.
+
+### Conventions et défauts (décidés, non re-discutables sans argument)
+
+- **Esthétique** : Fluent Windows 11 natif à fond, via Wpf.Ui déjà embarqué — `Mica` en backdrop,
+  contrôles Fluent, icônes Segoe Fluent, accent système. Zéro nouvelle dépendance de style.
+- **Fenêtre** : redimensionnable, ~640×480 par défaut, grille responsive (wrap).
+- **Erreurs** (« format non supporté ou fichier introuvable ») : Snackbar/InfoBar éphémère en bas
+  de la grille — plus de StatusText dans un bandeau.
+- **Libellés en français**, ton sobre. Aucune animation décorative — uniquement les transitions
+  natives des contrôles Wpf.Ui.
+
+### Explicitement écarté
+
+- **Tray** : intouché (contenu et libellés actuels conservés).
+- **Aperçu animé au survol des vignettes** : coûteux (décodage/mpv par tuile) pour un gain
+  faible.
+- **Onboarding / premier lancement guidé** : sans objet en usage perso.
+- **Navigation multi-vues** (page Réglages séparée) : 6 réglages ne justifient pas une
+  navigation ; le flyout suffit.
 
 ## Points de vigilance connus
 
