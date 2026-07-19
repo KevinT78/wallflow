@@ -2,33 +2,22 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        Title="Wallflow" Height="520" Width="560"
+        Title="Wallflow" Height="480" Width="640" MinHeight="360" MinWidth="440"
         WindowStartupLocation="CenterScreen"
-        Background="#1A1A1A"
-        AllowDrop="True" Drop="OnDrop">
+        WindowBackdropType="Mica" ExtendsContentIntoTitleBar="True"
+        AllowDrop="True" Drop="OnDrop"
+        DragEnter="OnDragEnter" DragOver="OnDragEnter" DragLeave="OnDragLeave">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Margin="16,8,16,8" Padding="24" CornerRadius="8"
-                BorderThickness="2" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                Background="{DynamicResource ControlFillColorDefaultBrush}"
-                Cursor="Hand" MouseLeftButtonUp="OnBrowse">
-            <StackPanel>
-                <TextBlock Text="Dépose un GIF, une vidéo ou une image ici"
-                           FontSize="16" HorizontalAlignment="Center" />
-                <TextBlock Text="ou clique pour choisir un fichier"
-                           Opacity="0.6" Margin="0,4,0,0" HorizontalAlignment="Center" />
-                <TextBlock x:Name="StatusText" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
-                           Margin="0,8,0,0" HorizontalAlignment="Center" Visibility="Collapsed" />
-            </StackPanel>
-        </Border>
+        <ui:TitleBar Grid.Row="0" Title="Wallflow" />
 
-        <ScrollViewer Grid.Row="1" Margin="16,0" VerticalScrollBarVisibility="Auto">
+        <!-- Zone 1 : la grille des Récents, héros de la fenêtre -->
+        <ScrollViewer Grid.Row="1" Margin="16,8,16,0" VerticalScrollBarVisibility="Auto">
             <ItemsControl x:Name="RecentsList">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -38,67 +27,86 @@
             </ItemsControl>
         </ScrollViewer>
 
-        <Border Grid.Row="2" Margin="16,0,16,8" Padding="12" CornerRadius="8"
-                BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                Background="{DynamicResource ControlFillColorDefaultBrush}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+        <!-- Snackbar éphémère (erreurs), en bas de la grille -->
+        <ui:SnackbarPresenter x:Name="SnackbarHost" Grid.Row="1"
+                              VerticalAlignment="Bottom" Margin="16" />
 
-                <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,8,8">
-                    <TextBlock Text="Volume" FontSize="13" Margin="0,0,0,4" />
+        <!-- Zone 2 : barre du bas, 3 contrôles icône alignés à droite -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="16,8,16,16">
+            <ui:Button x:Name="PlayPauseButton" Click="OnPauseToggle"
+                       ToolTip="Lecture / Pause" Margin="0,0,8,0">
+                <ui:Button.Icon>
+                    <ui:SymbolIcon x:Name="PlayPauseIcon" Symbol="Pause24" />
+                </ui:Button.Icon>
+            </ui:Button>
+
+            <ui:Button x:Name="VolumeButton" Click="OnVolumeButtonClick"
+                       ToolTip="Volume" Margin="0,0,8,0">
+                <ui:Button.Icon>
+                    <ui:SymbolIcon x:Name="VolumeIcon" Symbol="Speaker224" />
+                </ui:Button.Icon>
+            </ui:Button>
+            <ui:Flyout x:Name="VolumeFlyout" Placement="Top">
+                <StackPanel Width="240">
+                    <TextBlock Text="Volume" FontSize="13" Margin="0,0,0,8" />
                     <StackPanel Orientation="Horizontal">
-                        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Width="120" />
-                        <TextBlock x:Name="VolumeReadout" Margin="8,0,0,0" VerticalAlignment="Center"
-                                   Opacity="0.8" Width="36" />
-                        <ui:ToggleSwitch x:Name="MuteToggle" Content="Muet" Margin="8,0,0,0" />
+                        <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
+                                Width="150" VerticalAlignment="Center" />
+                        <TextBlock x:Name="VolumeReadout" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" Opacity="0.8" Width="40" />
                     </StackPanel>
+                    <ui:ToggleSwitch x:Name="MuteToggle" Content="Muet" Margin="0,12,0,0" />
                 </StackPanel>
+            </ui:Flyout>
 
-                <StackPanel Grid.Column="1" Grid.Row="0" Margin="8,0,0,8">
-                    <TextBlock Text="Cadrage" FontSize="13" Margin="0,0,0,4" />
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton x:Name="FitCover" Content="Cover" GroupName="VideoFit"
-                                     Margin="0,0,8,0" />
-                        <RadioButton x:Name="FitFit" Content="Fit" GroupName="VideoFit"
-                                     Margin="0,0,8,0" />
+            <ui:Button x:Name="SettingsButton" Click="OnSettingsButtonClick"
+                       ToolTip="Réglages">
+                <ui:Button.Icon>
+                    <ui:SymbolIcon Symbol="Settings24" />
+                </ui:Button.Icon>
+            </ui:Button>
+            <ui:Flyout x:Name="SettingsFlyout" Placement="Top">
+                <StackPanel Width="260">
+                    <TextBlock Text="Cadrage" FontSize="13" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <RadioButton x:Name="FitCover" Content="Cover" GroupName="VideoFit" Margin="0,0,12,0" />
+                        <RadioButton x:Name="FitFit" Content="Fit" GroupName="VideoFit" Margin="0,0,12,0" />
                         <RadioButton x:Name="FitFill" Content="Fill" GroupName="VideoFit" />
                     </StackPanel>
-                </StackPanel>
 
-                <StackPanel Grid.Column="0" Grid.Row="1" Margin="0,8,8,0">
-                    <TextBlock Text="Vitesse" FontSize="13" Margin="0,0,0,4" />
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton x:Name="Speed05" Content="0.5×" GroupName="Speed"
-                                     Margin="0,0,8,0" />
-                        <RadioButton x:Name="Speed10" Content="1×" GroupName="Speed"
-                                     Margin="0,0,8,0" />
-                        <RadioButton x:Name="Speed15" Content="1.5×" GroupName="Speed"
-                                     Margin="0,0,8,0" />
+                    <TextBlock Text="Vitesse" FontSize="13" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <RadioButton x:Name="Speed05" Content="0.5×" GroupName="Speed" Margin="0,0,12,0" />
+                        <RadioButton x:Name="Speed10" Content="1×" GroupName="Speed" Margin="0,0,12,0" />
+                        <RadioButton x:Name="Speed15" Content="1.5×" GroupName="Speed" Margin="0,0,12,0" />
                         <RadioButton x:Name="Speed20" Content="2×" GroupName="Speed" />
                     </StackPanel>
-                </StackPanel>
 
-                <StackPanel Grid.Column="1" Grid.Row="1" Margin="8,8,0,0">
-                    <ui:ToggleSwitch x:Name="LoopToggle" Content="Boucle infinie" Margin="0,8,0,0" />
-                </StackPanel>
-            </Grid>
-        </Border>
+                    <ui:ToggleSwitch x:Name="LoopToggle" Content="Boucle infinie" />
+                    <ui:ToggleSwitch x:Name="AutoStartToggle" Content="Démarrer avec Windows" Margin="0,8,0,0" />
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="16,0,16,16">
-            <ui:ToggleSwitch x:Name="PauseToggle" Content="Pause" Click="OnPauseToggle" />
-            <ui:ToggleSwitch x:Name="AutoStartToggle" Content="Démarrer avec Windows"
-                             Margin="24,0,0,0" Click="OnAutoStartToggle" />
-            <Button Content="Retirer le fond d'écran" Margin="24,0,0,0"
-                    Padding="8,4" Click="OnRemoveWallpaper" />
-            <Button Content="Quitter" Margin="8,0,0,0"
-                    Padding="8,4" Click="OnQuit" />
+                    <Separator Margin="0,12" />
+
+                    <ui:Button Content="Retirer le fond d'écran" Appearance="Secondary"
+                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                               Click="OnRemoveWallpaper" Margin="0,0,0,6" />
+                    <ui:Button Content="Quitter" Appearance="Secondary"
+                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                               Click="OnQuit" />
+                </StackPanel>
+            </ui:Flyout>
         </StackPanel>
+
+        <!-- Overlay de drop plein cadre, au-dessus de tout -->
+        <Border x:Name="DropOverlay" Grid.RowSpan="3" Visibility="Collapsed"
+                Background="#CC1F1F1F" IsHitTestVisible="False">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="48"
+                               HorizontalAlignment="Center" />
+                <TextBlock Text="Dépose pour appliquer" FontSize="20"
+                           Margin="0,12,0,0" HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
     </Grid>
 </ui:FluentWindow>

@@ -59,6 +59,9 @@ public sealed class AppService
     /// <summary>Récents dont le fichier existe encore (les supprimés sont purgés à la lecture).</summary>
     public IReadOnlyList<string> Recents => Settings.Recents.Where(File.Exists).ToList();
 
+    /// <summary>Wallpaper actif = wallpaper courant persisté (nul après « Retirer le fond d'écran »). Pas de nouvel état.</summary>
+    public string? ActiveWallpaper => Settings.LastWallpaper;
+
     public bool Apply(string path)
     {
         if (!File.Exists(path) || !SupportedExtensions.Contains(Path.GetExtension(path).ToLowerInvariant()))
@@ -80,6 +83,14 @@ public sealed class AppService
     {
         Settings.LastWallpaper = null;
         _players.Clear();
+        Settings.Save();
+        StateChanged?.Invoke();
+    }
+
+    /// <summary>« Retirer des récents » : ôte l'entrée persistée et notifie ; ne touche ni les players ni le wallpaper courant (même si c'est l'actif).</summary>
+    public void RemoveFromRecents(string path)
+    {
+        Settings.Recents.Remove(path);
         Settings.Save();
         StateChanged?.Invoke();
     }
