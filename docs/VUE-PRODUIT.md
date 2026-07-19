@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `014bce9` (2026-07-19)._
-<!-- doc-provenance: commit=014bce9 generated=2026-07-19 -->
+> _Généré au commit `4ec958b` (2026-07-19)._
+<!-- doc-provenance: commit=4ec958b generated=2026-07-19 -->
 
 ## En une phrase
 
@@ -27,6 +27,7 @@ mindmap
       Tuile + pour parcourir ses fichiers
       GIF, WebP animé, vidéo, image
       Même wallpaper sur tous les écrans
+      Coupe le diaporama Windows le temps de l'affichage (anti-flicker)
     🕘 Récents
       Grille des 10 derniers, en héros de la fenêtre
       Un clic pour ré-appliquer
@@ -45,6 +46,7 @@ mindmap
       Volume aussi depuis le tray
     🧹 Retirer / Quitter
       Retirer le fond, le bureau natif revient
+      Le diaporama Windows éventuel est remis comme avant
       L'app reste dans la zone de notification
       Quitter rend aussi le fond, sans bureau blanc
       Les deux accessibles depuis la fenêtre
@@ -106,6 +108,12 @@ d'écran natif de Windows n'est jamais remplacé, seulement recouvert — et con
 fichiers à mpv, un lecteur multimédia open source réputé, embarqué dans l'application. Quand on
 retire le fond ou qu'on quitte, l'application redemande à Windows de repeindre ce fond natif, pour
 qu'il réapparaisse intact.
+
+Cas particulier : si le fond natif de Windows est réglé en **diaporama** (un dossier d'images qui
+défilent), Wallflow le met en pause tant qu'un wallpaper est actif — sinon l'image du diaporama
+réapparaîtrait brièvement à chaque changement, par-dessus l'animation (un clignotement gênant).
+Le diaporama est remis exactement comme il était — mêmes images, même intervalle — dès qu'on retire
+le fond ou qu'on quitte.
 
 Pour que l'animation ne pèse presque rien sur le PC, les GIF et WebP animés — coûteux à décoder —
 sont convertis une seule fois, en arrière-plan, en vidéo légère : l'original s'affiche tout de

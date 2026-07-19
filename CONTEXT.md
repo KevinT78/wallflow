@@ -8,8 +8,8 @@ Ce fichier est un glossaire — le vocabulaire canonique du domaine, rien d'autr
 > **Vue produit** : [docs/VUE-PRODUIT.md](./docs/VUE-PRODUIT.md) · **Architecture technique** :
 > [docs/ARCHITECTURE-TECHNIQUE.md](./docs/ARCHITECTURE-TECHNIQUE.md) · **Décisions produit** :
 > [DESIGN.md](./DESIGN.md).
-> _Généré au commit `014bce9` (2026-07-19)._
-<!-- doc-provenance: commit=014bce9 generated=2026-07-19 -->
+> _Généré au commit `4ec958b` (2026-07-19)._
+<!-- doc-provenance: commit=4ec958b generated=2026-07-19 -->
 
 ## Langage
 
@@ -73,6 +73,15 @@ wallpaper), appliqués immédiatement, persistés. Le volume et le muet sont aus
 menu du tray.
 _Avoid_: options de lecture, paramètres vidéo
 
+**Diaporama Windows** :
+Le réglage natif de Windows qui fait défiler périodiquement un dossier d'images en fond d'écran
+(intervalle et mélange réglés dans les paramètres Windows). Distinct du `Wallpaper` de Wallflow, qui
+n'a aucune notion de diaporama (un seul `Wallpaper` actif à la fois). Tant qu'un `Wallpaper` Wallflow
+est actif, Wallflow coupe ce diaporama pour supprimer son tick périodique — qui repeignait l'écran
+par-dessus le `Wallpaper` (flicker) — puis le restaure à l'identique au `Retirer le fond d'écran` ou
+au `Quitter`.
+_Avoid_: slideshow, diaporama (sans « Windows » — ce n'est pas une fonction de Wallflow)
+
 ### Faux-amis à ne pas confondre
 
 - **Pause manuelle** vs **Pause auto** : deux drapeaux distincts — la fin d'un jeu plein écran lève
@@ -87,6 +96,10 @@ _Avoid_: options de lecture, paramètres vidéo
 Action de rendre à l'`Utilisateur` son fond d'écran Windows natif, en demandant à l'OS de le
 repeindre. Déclenchée quand l'app quitte et par `Retirer le fond d'écran`. Sans elle, retirer la
 fenêtre de Wallflow laisse un bureau blanc.
+- **`Wallpaper`** (l'objet de Wallflow) vs **`Diaporama Windows`** (le réglage natif de l'OS qui fait
+  défiler des images) : Wallflow ne propose pas de diaporama ; il coupe celui de Windows pendant qu'un
+  `Wallpaper` est actif, puis le restaure. Ne pas confondre non plus avec les `Récents`, qui ne
+  défilent pas tout seuls.
 - **`Récents`** (historique re-cliquable) vs bibliothèque (n'existe pas : aucun fichier n'est copié
   ni géré, Wallflow pointe vers les fichiers de l'`Utilisateur` là où ils sont).
 - **`Retirer des récents`** (ôte une vignette de la grille, la lecture continue) vs `Retirer le fond

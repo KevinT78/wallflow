@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `014bce9` (2026-07-19)._
-<!-- doc-provenance: commit=014bce9 generated=2026-07-19 -->
+> _Généré au commit `4ec958b` (2026-07-19)._
+<!-- doc-provenance: commit=4ec958b generated=2026-07-19 -->
 
 ## Stack
 
@@ -42,11 +42,14 @@ classDiagram
         Rebuild()
         Clear()
         Dispose()
+        PauseSlideshowIfActive() SlideshowSnapshot?
+        ResumeSlideshow(snapshot)
     }
     class AppService {
         Settings settings
         bool manualPause
         bool autoPause
+        SlideshowSnapshot? capturedSlideshow
         string? ActiveWallpaper
         Apply(path)
         ApplyPlaybackSettings()
@@ -72,6 +75,14 @@ classDiagram
     class WallpaperHost {
         CreateHostFor(screen) IntPtr
         RestoreDesktop()
+        PauseSlideshowIfActive() SlideshowSnapshot?
+        ResumeSlideshow(snapshot)
+    }
+    class SlideshowSnapshot {
+        <<record>>
+        string FolderPath
+        uint IntervalMs
+        bool Shuffle
     }
     class WallpaperCache {
         <<static>>
@@ -101,11 +112,16 @@ classDiagram
     AppService ..> WallpaperCache : résout / convertit
     PlayerManager "1" --> "*" MpvPlayer : un par écran
     MpvPlayer ..> WallpaperHost : parent HWND
+    AppService ..> SlideshowSnapshot : capture en mémoire
+    WallpaperHost ..> SlideshowSnapshot : produit / consomme
+    PlayerManager ..> WallpaperHost : délègue diaporama
 ```
 
-Frontières (décision figée) : tout le WinAPI est confiné dans `WallpaperHost` + `ActivityMonitor`,
-tout libmpv dans `MpvPlayer`. `AppService` et `PlayerManager` sont du .NET pur, testables sans
-écran. Un seul seam de DI : `AppService` reçoit un `IPlayerManager` (interface extraite pour les
+Frontières (décision figée) : tout le WinAPI **et le COM `IDesktopWallpaper`** (diaporama natif) sont
+confinés dans `WallpaperHost` + `ActivityMonitor`, tout libmpv dans `MpvPlayer`. `AppService` et
+`PlayerManager` sont du .NET pur, testables sans écran — l'orchestration du diaporama vit dans
+`AppService` (transitions), pas dans le code COM ; `PlayerManager` ne fait que déléguer à
+`WallpaperHost`. Un seul seam de DI : `AppService` reçoit un `IPlayerManager` (interface extraite pour les
 tests, mock dans `tests/Wallflow.Tests/`) ; le reste est instancié en concret.
 
 ## Cycle de vie de la lecture
@@ -141,7 +157,10 @@ flowchart TD
     A["Drop / tuile + / clic récent / boot"] --> B["AppService.Apply(path)"]
     B --> C{"Fichier existe et<br/>extension supportée ?"}
     C -->|non| D["Snackbar d'erreur, état inchangé"]
-    C -->|oui| E["PlayerManager.Load<br/>(version cache si déjà convertie, sinon l'original)"]
+    C -->|oui| T{"LastWallpaper == null ?<br/>(transition aucun→actif)"}
+    T -->|oui| S["PauseSlideshowIfActive()<br/>coupe le diaporama Windows, capture en mémoire"]
+    T -->|non| E
+    S --> E["PlayerManager.Load<br/>(version cache si déjà convertie, sinon l'original)"]
     E --> F["Ajout en tête des recents (max 10, dédupliqué)"]
     F --> G["Écriture settings.json"]
     E -.->|.gif / .webp pas encore en cache| H["WallpaperCache.ConvertAsync<br/>ffmpeg → mp4 H.264 en fond"]
@@ -171,11 +190,13 @@ au shell de repeindre le fond enregistré.
 ```mermaid
 flowchart TD
     A["Retirer le fond<br/>(flyout ⚙ / menu tray)"] --> B["AppService.RemoveWallpaper()"]
-    B --> C["Settings.LastWallpaper = null"]
+    B --> R["ResumeCapturedSlideshow()<br/>si capture en mémoire → ResumeSlideshow + oubli"]
+    R --> C["Settings.LastWallpaper = null"]
     C --> D["PlayerManager.Clear()<br/>teardown players + RestoreDesktop()"]
     D --> E["Settings.Save() + StateChanged"]
     F["Quitter<br/>(flyout ⚙ / menu tray)"] --> G["Shutdown → OnExit"]
-    G --> H["PlayerManager.Dispose()<br/>teardown players + RestoreDesktop()"]
+    G --> R2["ResumeCapturedSlideshow()"]
+    R2 --> H["PlayerManager.Dispose()<br/>teardown players + RestoreDesktop()"]
 ```
 
 État « retiré » = **absence de wallpaper courant**, exprimée par `LastWallpaper == null` (décision B :
@@ -263,6 +284,40 @@ Options mpv posées au constructeur (défauts sûrs, écrasés ensuite par `Appl
 code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se pilote via
 `panscan` + `keepaspect` (cover = panscan 1 ; fit = panscan 0 ; fill = keepaspect no) — et la
 vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait rejeté par mpv).
+
+## Anti-flicker : coupure du diaporama Windows natif
+
+Quand le fond natif de Windows est réglé en **`Diaporama Windows`**, son tick périodique repeint
+l'écran en plein cadre à chaque changement d'image — par-dessus le `Wallpaper` de Wallflow, d'où un
+flicker au rythme de l'intervalle configuré. Aucune notification système n'annonce ce repaint
+(4 pistes testées et écartées, cf. PRD) : la stratégie est donc de **supprimer la cause** — couper le
+diaporama tant qu'un `Wallpaper` est actif, le restaurer ensuite.
+
+Deux couches, séparation nette :
+
+- **Primitive COM** dans `WallpaperHost` (même frontière que le WorkerW, live-only, non testable
+  unitairement) via `IDesktopWallpaper` (`CLSID_DesktopWallpaper`, dispo Windows 8+) :
+  - `PauseSlideshowIfActive()` : capture best-effort (`GetSlideshow` → dossier via
+    `IShellItem::GetDisplayName`, `GetSlideshowOptions` → intervalle + mélange) dans un
+    `SlideshowSnapshot`, puis coupe le défilement — **la coupure (`Enable(false)`) est tentée même si
+    la capture échoue** : l'objectif premier est de stopper le flicker, pas de capturer.
+  - `ResumeSlideshow(snapshot)` : `SHCreateItemFromParsingName` + `SHCreateShellItemArrayFromShellItem`
+    → `SetSlideshow` + `SetSlideshowOptions` + `Enable(true)`.
+- **Orchestration** dans `AppService` (testable via le seam `IPlayerManager`) : capture à la
+  **transition `LastWallpaper == null` → actif** uniquement (un changement d'image d'un `Wallpaper`
+  déjà actif ne recapture pas ; `Rebuild` non plus). `RemoveWallpaper()` et `Shutdown()` appellent
+  `ResumeCapturedSlideshow()` (restaure puis oublie). Snapshot **en mémoire seulement** — la
+  persistance résiliente au crash est l'issue 008.
+
+> ⚠️ **Écarts réel vs intention (vérifiés live, Win10 19045)** — le PRD prévoyait de couper via
+> l'effet de bord de `SetWallpaper(image courante)` et de détecter via `GetStatus() == DSS_ENABLED`.
+> Les deux se sont révélés faux en programmatique : `SetWallpaper` **ne coupe pas** le diaporama
+> (et `GetWallpaper(null)` renvoie vide pendant un diaporama), et `GetStatus` ne reporte
+> `DSS_SLIDESHOW` que lorsqu'il est posé par l'app Réglages (reste `DSS_ENABLED` après tout appel COM).
+> Signaux fiables retenus : détection par le registre `BackgroundType == 2`
+> (`…\Explorer\Wallpapers`), coupure/reprise par `Enable(false)`/`Enable(true)` — round-trip vérifié
+> `0x3 → 0x0 → 0x3`, `RestoreDesktop()` (SPI_SETDESKWALLPAPER) sur le chemin de sortie **ne clobbe
+> pas** le diaporama relancé (les deux couches sont bien indépendantes).
 
 ## Surveillance d'activité
 
