@@ -21,6 +21,10 @@ public sealed class AppService
     private bool _manualPause;
     private bool _autoPause;
 
+    // Config du diaporama Windows capturée à la coupure, restaurée au retrait/quitter (issue 007).
+    // En mémoire seulement ici — la persistance résiliente au crash est l'issue 008.
+    private SlideshowSnapshot? _capturedSlideshow;
+
     public AppService() : this(new PlayerManager()) { }
 
     public AppService(IPlayerManager playerManager)
@@ -67,6 +71,11 @@ public sealed class AppService
         if (!File.Exists(path) || !SupportedExtensions.Contains(Path.GetExtension(path).ToLowerInvariant()))
             return false;
 
+        // Transition « aucun Wallpaper actif → actif » : coupe le diaporama Windows et garde sa
+        // config. Un simple changement d'image (Wallpaper déjà actif) ne redéclenche pas de capture.
+        if (Settings.LastWallpaper is null)
+            _capturedSlideshow = _players.PauseSlideshowIfActive();
+
         // Joue la version convertie si elle existe déjà ; sinon l'original tout de suite,
         // et bascule à chaud vers le mp4 dès que la conversion aboutit (si toujours actif).
         var cached = WallpaperCache.TryGet(path);
@@ -93,10 +102,19 @@ public sealed class AppService
     /// <summary>« Retirer le fond d'écran » : rend le bureau natif, app vivante dans le tray. Ré-applicable via Récents.</summary>
     public void RemoveWallpaper()
     {
+        ResumeCapturedSlideshow();
         Settings.LastWallpaper = null;
         _players.Clear();
         Settings.Save();
         StateChanged?.Invoke();
+    }
+
+    /// <summary>Restaure le diaporama Windows capturé s'il y en a un, puis l'oublie. No-op sinon.</summary>
+    private void ResumeCapturedSlideshow()
+    {
+        if (_capturedSlideshow is not { } snap) return;
+        _players.ResumeSlideshow(snap);
+        _capturedSlideshow = null;
     }
 
     /// <summary>« Retirer des récents » : ôte l'entrée persistée et notifie ; ne touche ni les players ni le wallpaper courant (même si c'est l'actif).</summary>
@@ -144,5 +162,9 @@ public sealed class AppService
             key.DeleteValue("Wallflow", throwOnMissingValue: false);
     }
 
-    public void Shutdown() => _players.Dispose();
+    public void Shutdown()
+    {
+        ResumeCapturedSlideshow();
+        _players.Dispose();
+    }
 }

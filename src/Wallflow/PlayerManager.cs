@@ -93,6 +93,10 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
         }
     }
 
+    // Délégation pure vers la primitive COM (live-only) : l'orchestration vit dans AppService.
+    public SlideshowSnapshot? PauseSlideshowIfActive() => WallpaperHost.PauseSlideshowIfActive();
+    public void ResumeSlideshow(SlideshowSnapshot snapshot) => WallpaperHost.ResumeSlideshow(snapshot);
+
     // Quitter : mêmes symptômes qu'un Clear (bureau blanc sinon), mais l'app se termine derrière.
     public void Dispose()
     {

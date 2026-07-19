@@ -150,11 +150,115 @@ public class AppServiceTests
         Assert.Equal(before, after?.GetValue("Wallflow"));
     }
 
+    private static readonly SlideshowSnapshot Snap = new(@"C:\Users\Me\Pictures\Slides", 600000, true);
+
+    [Fact]
+    public void Apply_FirstWallpaper_CapturesSlideshowOnce()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm); // dossier temp neuf → LastWallpaper null → pas d'Apply au ctor
+
+        svc.Apply(CreateTempMedia(".gif")); // transition aucun Wallpaper actif → actif
+
+        Assert.Equal(1, pm.PauseSlideshowCalls);
+    }
+
+    [Fact]
+    public void Apply_ImageChangeWhileActive_DoesNotRecapture()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+
+        svc.Apply(CreateTempMedia(".gif")); // transition → capture
+        svc.Apply(CreateTempMedia(".mp4")); // Wallpaper déjà actif → pas de recapture
+
+        Assert.Equal(1, pm.PauseSlideshowCalls);
+    }
+
+    [Fact]
+    public void RemoveWallpaper_RestoresCapturedSlideshow()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+        svc.Apply(CreateTempMedia(".gif"));
+
+        svc.RemoveWallpaper();
+
+        Assert.Equal(1, pm.ResumeSlideshowCalls);
+        Assert.Equal(Snap, pm.LastResumed);
+    }
+
+    [Fact]
+    public void RemoveWallpaper_WithNoSlideshowActive_RestoresNothing()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = null }; // diaporama inactif à l'Apply
+        var svc = new AppService(pm);
+        svc.Apply(CreateTempMedia(".gif"));
+
+        svc.RemoveWallpaper();
+
+        Assert.Equal(0, pm.ResumeSlideshowCalls);
+    }
+
+    [Fact]
+    public void RemoveWallpaper_ForgetsSnapshot_NoDoubleRestore()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+        svc.Apply(CreateTempMedia(".gif"));
+
+        svc.RemoveWallpaper();
+        svc.RemoveWallpaper(); // plus de capture en mémoire → pas de seconde restauration
+
+        Assert.Equal(1, pm.ResumeSlideshowCalls);
+    }
+
+    [Fact]
+    public void Shutdown_RestoresCapturedSlideshow()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+        svc.Apply(CreateTempMedia(".gif"));
+
+        svc.Shutdown();
+
+        Assert.Equal(1, pm.ResumeSlideshowCalls);
+        Assert.Equal(Snap, pm.LastResumed);
+    }
+
+    [Fact]
+    public void RemoveFromRecents_LeavesSlideshowUntouched()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+        var a = CreateTempMedia(".gif");
+        svc.Apply(a);
+
+        svc.RemoveFromRecents(a);
+
+        Assert.Equal(1, pm.PauseSlideshowCalls); // aucune capture en plus
+        Assert.Equal(0, pm.ResumeSlideshowCalls); // aucune restauration
+    }
+
     private sealed class FakePlayerManager : IPlayerManager
     {
         public Settings? LastApplied { get; private set; }
         public bool Cleared { get; private set; }
         public bool LoadCalled { get; private set; }
+
+        // Diaporama Windows (issue 007) : la config renvoyée à la capture, et les compteurs
+        // d'appels qui laissent les tests vérifier l'orchestration via le seam IPlayerManager.
+        public SlideshowSnapshot? SlideshowToReturn { get; set; }
+        public int PauseSlideshowCalls { get; private set; }
+        public int ResumeSlideshowCalls { get; private set; }
+        public SlideshowSnapshot? LastResumed { get; private set; }
 
         public void ApplySettings(Settings settings) => LastApplied = settings;
         public void Load(string path) => LoadCalled = true;
@@ -163,5 +267,7 @@ public class AppServiceTests
         public void Rebuild() { }
         public void Clear() => Cleared = true;
         public void Dispose() { }
+        public SlideshowSnapshot? PauseSlideshowIfActive() { PauseSlideshowCalls++; return SlideshowToReturn; }
+        public void ResumeSlideshow(SlideshowSnapshot snapshot) { ResumeSlideshowCalls++; LastResumed = snapshot; }
     }
 }
