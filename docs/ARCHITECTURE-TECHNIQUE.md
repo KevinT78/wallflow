@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `5a1cef5` (2026-07-19)._
-<!-- doc-provenance: commit=5a1cef5 generated=2026-07-19 -->
+> _Généré au commit `014bce9` (2026-07-19)._
+<!-- doc-provenance: commit=014bce9 generated=2026-07-19 -->
 
 ## Stack
 
@@ -16,9 +16,10 @@
 | Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost.cs`, `ActivityMonitor.cs` |
 | UI tray | H.NotifyIcon.Wpf 2.3.0 (icône via `Icon.ExtractAssociatedIcon`, efficiency mode off) | `App.xaml.cs` (`BuildTray`) |
 | Fenêtre | WPF-UI 4.3.0 : `FluentWindow` backdrop Mica + accent système, redimensionnable ; grille des `Récents` en héros, barre du bas à 3 contrôles (`Flyout` volume / réglages), `SnackbarPresenter` pour les erreurs, icônes `SymbolIcon` (Segoe Fluent) | `MainWindow.xaml(.cs)` |
-| Vignettes | API shell `IShellItemImageFactory` | `Thumbnail.cs` |
+| Vignettes | API shell `IShellItemImageFactory`, décodage **asynchrone** (thread pool + Dispatcher) | `Thumbnail.cs`, `MainWindow.BuildThumb` |
+| Conversion perf | ffmpeg.exe embarqué (build ≥ 7.1 requis pour le webp animé, `lib/` hors git comme libmpv) : GIF/webp → mp4 H.264 en cache pour récupérer le décodage matériel | `WallpaperCache.cs` |
 | Persistance | `System.Text.Json`, fichier unique | `%LOCALAPPDATA%\Wallflow\settings.json` |
-| Tests | xunit, mock manuel de `IPlayerManager`, `Settings.DirOverride` pour isoler le `settings.json` réel | `tests/Wallflow.Tests/` |
+| Tests | xunit, mock manuel de `IPlayerManager` ; isolation du réel : `Settings.DirOverride` (settings.json), `AppService.SkipRunKey` (clé registre `Run`), `WallpaperCache.Disabled` (pas de spawn ffmpeg) | `tests/Wallflow.Tests/` |
 
 Formats acceptés (`AppService.SupportedExtensions`) : `.gif .webp .mp4 .webm .mkv .png .jpg .jpeg .bmp`
 — `.mkv` s'est ajouté au design initial (gratuit via mpv).
@@ -72,6 +73,12 @@ classDiagram
         CreateHostFor(screen) IntPtr
         RestoreDesktop()
     }
+    class WallpaperCache {
+        <<static>>
+        bool Disabled
+        TryGet(path) string?
+        ConvertAsync(path, onConverted)
+    }
     class ActivityMonitor {
         event ShouldPauseChanged
     }
@@ -91,6 +98,7 @@ classDiagram
     AppService "1" --> "1" IPlayerManager : pilote
     AppService "1" --> "1" Settings : lit / écrit
     AppService <.. ActivityMonitor : notifie
+    AppService ..> WallpaperCache : résout / convertit
     PlayerManager "1" --> "*" MpvPlayer : un par écran
     MpvPlayer ..> WallpaperHost : parent HWND
 ```
@@ -133,10 +141,22 @@ flowchart TD
     A["Drop / tuile + / clic récent / boot"] --> B["AppService.Apply(path)"]
     B --> C{"Fichier existe et<br/>extension supportée ?"}
     C -->|non| D["Snackbar d'erreur, état inchangé"]
-    C -->|oui| E["PlayerManager.Load(path)<br/>sur chaque MpvPlayer"]
+    C -->|oui| E["PlayerManager.Load<br/>(version cache si déjà convertie, sinon l'original)"]
     E --> F["Ajout en tête des recents (max 10, dédupliqué)"]
     F --> G["Écriture settings.json"]
+    E -.->|.gif / .webp pas encore en cache| H["WallpaperCache.ConvertAsync<br/>ffmpeg → mp4 H.264 en fond"]
+    H -.->|si toujours le wallpaper actif| I["Bascule à chaud :<br/>Load du mp4 converti"]
 ```
+
+La conversion (`WallpaperCache`, clé de cache = chemin + taille + date dans
+`%LOCALAPPDATA%\Wallflow\cache`) existe pour la perf : le décodage GIF/webp de mpv est 100 % CPU
+(webp 17 Mo mesuré à 27,5 % sur la machine de référence), le mp4 converti se décode en matériel
+(~1 % à cache chaud). L'original joue pendant la conversion (~20-30 s) ; les `recents` et
+`settings.json` gardent toujours le **chemin d'origine**. Sans `ffmpeg.exe` ou sur échec ffmpeg,
+l'original joue tel quel — le cache est une optimisation, jamais un point de défaillance. Le test
+« toujours actif » se fait dans le lambda dispatché sur le thread UI (un Apply intercalé ne doit
+pas être écrasé par une conversion périmée). Pas d'éviction du cache (borné de fait par les
+10 récents).
 
 La validation d'entrée (existence du fichier, extension dans la liste supportée) est la seule
 frontière de confiance du produit : tout le reste est local et mono-utilisateur.
@@ -222,6 +242,12 @@ construction. Les valeurs hors limites sont clampées dans les setters de `Setti
 `MpvPlayer`, ré-énumère les écrans, recrée un player par écran, ré-applique le wallpaper courant
 et les réglages de lecture. Brutal mais simple ; un changement d'écran est un événement rare.
 
+> ⚠️ **Garde anti-boucle obligatoire** : recréer un player mpv (contexte D3D11 dans le WorkerW)
+> émet lui-même un `DisplaySettingsChanged` — sans garde, Rebuild s'auto-alimentait à ~33 Hz
+> (mp4 mesuré à 43 % CPU, retombé à ~7 % après correction). `Rebuild` compare donc une signature
+> de la config réelle (`ScreenSig()` : bounds de `Screen.AllScreens`) et ne reconstruit que si
+> elle a changé.
+
 ## Intégration bureau (WorkerW)
 
 Le point non standard du projet. `WallpaperHost` envoie `SendMessage(Progman, 0x052C)` pour que le
@@ -267,7 +293,8 @@ Un seul fichier, `%LOCALAPPDATA%\Wallflow\settings.json`, réécrit en entier à
 ```
 
 Pas à côté de l'exe : le dossier portable peut être déplacé ou en lecture seule — LOCALAPPDATA
-survit aux deux. Les `recents` stockent des **chemins**, pas des copies : un fichier supprimé par
+survit aux deux. À côté du fichier vit `%LOCALAPPDATA%\Wallflow\cache\` (mp4 convertis par
+`WallpaperCache`, nommés par hash, jamais purgés). Les `recents` stockent des **chemins**, pas des copies : un fichier supprimé par
 l'utilisateur disparaît de la grille (`AppService.Recents` filtre sur `File.Exists`), mais
 **n'est jamais purgé du JSON** — écart réel vs intention, relevé en code-review, à corriger ou assumer.
 
@@ -277,11 +304,23 @@ Aucun code de génération : l'API shell Windows (`IShellItemImageFactory`) four
 pour tous les formats supportés (c'est elle que l'Explorateur utilise). Appel par chemin, cache
 géré par l'OS.
 
+Deux protections de réactivité dans `MainWindow` :
+
+- **Grille reconstruite seulement si nécessaire** (`RefreshGrid`) : clé = liste des récents +
+  wallpaper actif ; un `StateChanged` de réglage (drag du slider volume) ne redéclenche pas le
+  décodage des vignettes.
+- **Décodage asynchrone** (`BuildThumb`) : placeholder immédiat (nom du fichier), extraction
+  shell sur le thread pool, remplacement via le `Dispatcher` à l'arrivée — l'ouverture de la
+  fenêtre ne bloque plus sur les fichiers jamais miniaturisés par l'Explorateur (plusieurs
+  centaines de ms chacun). Si la grille a été reconstruite entre-temps, le conteneur capturé est
+  détaché : écrire dedans est un no-op. Échec de décodage : le placeholder reste.
+
 ## Intégrations externes
 
 | Dépendance | Usage | Nature |
 |-----------|-------|--------|
 | libmpv (`mpv-2.dll`) | décodage + rendu de tous les formats | binaire natif embarqué (~50-70 Mo, poids assumé) |
+| ffmpeg (`ffmpeg.exe`) | conversion unique GIF/webp → mp4 du cache perf (build ≥ 7.1 requis : décodage webp animé) | binaire natif embarqué (~145 Mo build BtbN GPL, poids assumé) |
 | H.NotifyIcon | icône et menu de la zone de notification | package NuGet |
 | WPF-UI (ou équivalent) | thème Fluent sombre | package NuGet |
 

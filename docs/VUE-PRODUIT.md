@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `5a1cef5` (2026-07-19)._
-<!-- doc-provenance: commit=5a1cef5 generated=2026-07-19 -->
+> _Généré au commit `014bce9` (2026-07-19)._
+<!-- doc-provenance: commit=014bce9 generated=2026-07-19 -->
 
 ## En une phrase
 
@@ -107,6 +107,12 @@ fichiers à mpv, un lecteur multimédia open source réputé, embarqué dans l'a
 retire le fond ou qu'on quitte, l'application redemande à Windows de repeindre ce fond natif, pour
 qu'il réapparaisse intact.
 
+Pour que l'animation ne pèse presque rien sur le PC, les GIF et WebP animés — coûteux à décoder —
+sont convertis une seule fois, en arrière-plan, en vidéo légère : l'original s'affiche tout de
+suite, la version économe prend le relais dès qu'elle est prête, et les fois suivantes elle démarre
+directement. Rien ne change pour l'utilisateur : ses fichiers d'origine restent intacts et ce sont
+eux qu'il voit dans les récents.
+
 ```mermaid
 flowchart LR
     A["Fenêtre + icône<br/>de notification"] --> B["Cœur de l'application"]
@@ -120,4 +126,5 @@ flowchart LR
 | Fenêtre + icône de notification | Le seul point de contact : déposer un fichier, revoir les récents, mettre en pause. |
 | Cœur de l'application | Décide quoi jouer et quand se mettre en pause ; surveille plein écran et batterie. |
 | Lecteur mpv | Décode et affiche tous les formats (GIF, WebP, vidéo, image), selon les réglages de lecture (volume, cadrage, boucle, vitesse). |
+| Convertisseur | Transforme une fois pour toutes les GIF/WebP animés en vidéo économe, en arrière-plan — l'animation devient quasi invisible dans la consommation du PC. |
 | Sauvegarde locale | Un petit fichier sur le PC : wallpaper courant, récents, réglages. Rien ne quitte la machine. |
