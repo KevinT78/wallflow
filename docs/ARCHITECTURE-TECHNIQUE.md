@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `e1fcec3` (2026-07-18)._
-<!-- doc-provenance: commit=e1fcec3 generated=2026-07-18 -->
+> _Généré au commit `5a1cef5` (2026-07-19)._
+<!-- doc-provenance: commit=5a1cef5 generated=2026-07-19 -->
 
 ## Stack
 
@@ -15,7 +15,7 @@
 | Lecture média | libmpv (`libmpv-2.dll`, build shinchiro, dans `lib/` hors git), embedding `wid` | `MpvPlayer.cs` |
 | Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost.cs`, `ActivityMonitor.cs` |
 | UI tray | H.NotifyIcon.Wpf 2.3.0 (icône via `Icon.ExtractAssociatedIcon`, efficiency mode off) | `App.xaml.cs` (`BuildTray`) |
-| Thème | WPF-UI 4.3.0 (FluentWindow, Mica, thème sombre) | `MainWindow.xaml` |
+| Fenêtre | WPF-UI 4.3.0 : `FluentWindow` backdrop Mica + accent système, redimensionnable ; grille des `Récents` en héros, barre du bas à 3 contrôles (`Flyout` volume / réglages), `SnackbarPresenter` pour les erreurs, icônes `SymbolIcon` (Segoe Fluent) | `MainWindow.xaml(.cs)` |
 | Vignettes | API shell `IShellItemImageFactory` | `Thumbnail.cs` |
 | Persistance | `System.Text.Json`, fichier unique | `%LOCALAPPDATA%\Wallflow\settings.json` |
 | Tests | xunit, mock manuel de `IPlayerManager`, `Settings.DirOverride` pour isoler le `settings.json` réel | `tests/Wallflow.Tests/` |
@@ -46,9 +46,11 @@ classDiagram
         Settings settings
         bool manualPause
         bool autoPause
+        string? ActiveWallpaper
         Apply(path)
         ApplyPlaybackSettings()
         RemoveWallpaper()
+        RemoveFromRecents(path)
         SetAutoStart(bool)
     }
     class PlayerManager {
@@ -123,13 +125,14 @@ stateDiagram-v2
 
 ### Appliquer un wallpaper
 
-Déclencheurs : drop dans `MainWindow`, clic sur un élément des `Récents`, ou restauration au boot.
+Déclencheurs : drop n'importe où sur `MainWindow` (voile plein cadre pendant le glisser), tuile
+« + » ou dialogue Parcourir, clic sur un élément des `Récents`, ou restauration au boot.
 
 ```mermaid
 flowchart TD
-    A["Drop / clic récent / boot"] --> B["AppService.Apply(path)"]
+    A["Drop / tuile + / clic récent / boot"] --> B["AppService.Apply(path)"]
     B --> C{"Fichier existe et<br/>extension supportée ?"}
-    C -->|non| D["Toast d'erreur, état inchangé"]
+    C -->|non| D["Snackbar d'erreur, état inchangé"]
     C -->|oui| E["PlayerManager.Load(path)<br/>sur chaque MpvPlayer"]
     E --> F["Ajout en tête des recents (max 10, dédupliqué)"]
     F --> G["Écriture settings.json"]
@@ -147,11 +150,11 @@ au shell de repeindre le fond enregistré.
 
 ```mermaid
 flowchart TD
-    A["Retirer le fond<br/>(bouton fenêtre / menu tray)"] --> B["AppService.RemoveWallpaper()"]
+    A["Retirer le fond<br/>(flyout ⚙ / menu tray)"] --> B["AppService.RemoveWallpaper()"]
     B --> C["Settings.LastWallpaper = null"]
     C --> D["PlayerManager.Clear()<br/>teardown players + RestoreDesktop()"]
     D --> E["Settings.Save() + StateChanged"]
-    F["Quitter<br/>(bouton fenêtre / menu tray)"] --> G["Shutdown → OnExit"]
+    F["Quitter<br/>(flyout ⚙ / menu tray)"] --> G["Shutdown → OnExit"]
     G --> H["PlayerManager.Dispose()<br/>teardown players + RestoreDesktop()"]
 ```
 
@@ -160,6 +163,22 @@ aucun drapeau dédié). Le garde de démarrage existant (`si LastWallpaper exist
 Apply`) rend la persistance gratuite : après un retrait, rien n'est réappliqué au boot suivant.
 `Rebuild()` (écran branché/débranché) ne restaure **pas** — il re-couvre immédiatement, éviter le
 flicker.
+
+### Retirer des récents / marquage du wallpaper actif
+
+Deux ajouts au cœur, confinés à `AppService`, sans nouvel état :
+
+- `ActiveWallpaper` est une **propriété dérivée** (`=> Settings.LastWallpaper`) : la grille marque
+  d'un badge la vignette dont le chemin correspond (comparaison `OrdinalIgnoreCase`). Elle devient
+  `null` après `RemoveWallpaper`.
+- `RemoveFromRecents(path)` ôte l'entrée de `Settings.Recents`, sauvegarde et notifie `StateChanged`.
+  Elle **ne touche ni les players ni le wallpaper courant** — retirer la vignette de l'actif ne
+  déclenche donc jamais un `RemoveWallpaper` : le fond continue de jouer, il n'est plus dans la
+  grille. C'est le comportement couvert par `AppServiceTests` (retrait + persistance + notification +
+  non-interférence).
+
+Le menu contextuel des vignettes (`MainWindow.BuildRecentMenu`) expose « Retirer des récents » et
+« Ouvrir l'emplacement du fichier » (`explorer /select`) ; la tuile « + » n'a pas de menu.
 
 ### Démarrage (clé `Run`)
 
@@ -171,9 +190,10 @@ flicker.
 
 ### Appliquer un réglage de lecture
 
-Déclencheurs : un contrôle de la section réglages de `MainWindow` (slider volume avec readout `%`,
-toggle muet, radios cadrage, toggle boucle, **4 radios de vitesse** `0.5× · 1× · 1.5× · 2×`) ou le
-sous-menu Volume du tray (`App.BuildTray` : muet + presets 25/50/75/100 %).
+Déclencheurs : un contrôle des flyouts de la barre du bas de `MainWindow` (flyout volume : slider
+avec readout `%` + toggle muet ; flyout ⚙ : radios cadrage, toggle boucle, **4 radios de vitesse**
+`0.5× · 1× · 1.5× · 2×`, toggle démarrage Windows) ou le sous-menu Volume du tray (`App.BuildTray` :
+muet + presets 25/50/75/100 %).
 
 La vitesse s'affiche par **paliers nommés** (helper pur `SpeedPaliers`, valeurs `[0.5, 1.0, 1.5,
 2.0]`). Au refresh, la fenêtre met en évidence `SpeedPaliers.Nearest(Settings.Speed)` **sans**

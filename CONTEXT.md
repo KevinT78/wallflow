@@ -8,8 +8,8 @@ Ce fichier est un glossaire — le vocabulaire canonique du domaine, rien d'autr
 > **Vue produit** : [docs/VUE-PRODUIT.md](./docs/VUE-PRODUIT.md) · **Architecture technique** :
 > [docs/ARCHITECTURE-TECHNIQUE.md](./docs/ARCHITECTURE-TECHNIQUE.md) · **Décisions produit** :
 > [DESIGN.md](./DESIGN.md).
-> _Généré au commit `46b6b16` (2026-07-18)._
-<!-- doc-provenance: commit=e1fcec3 generated=2026-07-18 -->
+> _Généré au commit `5a1cef5` (2026-07-19)._
+<!-- doc-provenance: commit=5a1cef5 generated=2026-07-19 -->
 
 ## Langage
 
@@ -31,9 +31,18 @@ _Avoid_: fond d'écran animé vs statique (pas de distinction dans le produit : 
 skin
 
 **Récents** :
-Liste des 10 derniers `Wallpaper` appliqués, affichée en grille dans la fenêtre avec leurs
-vignettes. Cliquer un récent le ré-applique. C'est la seule « bibliothèque » du produit.
+Liste des 10 derniers `Wallpaper` appliqués, affichée en grille (le « héros » de la fenêtre) avec
+leurs vignettes. Cliquer un récent le ré-applique ; la vignette du `Wallpaper` actif y porte un
+marquage (bordure + badge). Clic droit sur une vignette : `Retirer des récents` ou ouvrir
+l'emplacement du fichier. C'est la seule « bibliothèque » du produit.
 _Avoid_: bibliothèque, collection, favoris (rien n'est épinglable)
+
+**Retirer des récents** :
+Action de l'`Utilisateur` (clic droit sur une vignette) qui ôte une entrée de la liste des
+`Récents`. N'affecte **pas** la lecture : retirer la vignette du `Wallpaper` actif ne l'arrête pas
+(il continue de jouer, il n'est simplement plus dans la grille). Distinct de `Retirer le fond
+d'écran`.
+_Avoid_: supprimer (aucun fichier n'est effacé du disque)
 
 **Pause manuelle** :
 Arrêt de la lecture décidé par l'`Utilisateur` (bouton de la fenêtre ou menu du tray). Ne se lève
@@ -80,3 +89,6 @@ repeindre. Déclenchée quand l'app quitte et par `Retirer le fond d'écran`. Sa
 fenêtre de Wallflow laisse un bureau blanc.
 - **`Récents`** (historique re-cliquable) vs bibliothèque (n'existe pas : aucun fichier n'est copié
   ni géré, Wallflow pointe vers les fichiers de l'`Utilisateur` là où ils sont).
+- **`Retirer des récents`** (ôte une vignette de la grille, la lecture continue) vs `Retirer le fond
+  d'écran` (arrête le `Wallpaper` actif et rend le bureau natif). Retirer des récents l'entrée du
+  wallpaper actif ne déclenche jamais un `Retirer le fond d'écran`.

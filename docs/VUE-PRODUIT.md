@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `e1fcec3` (2026-07-18)._
-<!-- doc-provenance: commit=e1fcec3 generated=2026-07-18 -->
+> _Généré au commit `5a1cef5` (2026-07-19)._
+<!-- doc-provenance: commit=5a1cef5 generated=2026-07-19 -->
 
 ## En une phrase
 
@@ -23,12 +23,16 @@ sur batterie, et restaure le wallpaper à chaque démarrage de Windows.
 mindmap
   root((🖼️ Wallflow))
     🎬 Appliquer
-      Glisser-déposer un fichier
+      Glisser-déposer un fichier n'importe où sur la fenêtre
+      Tuile + pour parcourir ses fichiers
       GIF, WebP animé, vidéo, image
       Même wallpaper sur tous les écrans
     🕘 Récents
-      Grille des 10 derniers
+      Grille des 10 derniers, en héros de la fenêtre
       Un clic pour ré-appliquer
+      Le wallpaper actif est marqué d'un badge
+      Clic droit : retirer des récents
+      Clic droit : ouvrir l'emplacement du fichier
     ⏸️ Pause
       Bouton pause manuelle
       Pause auto en plein écran
@@ -67,10 +71,13 @@ flowchart TD
     G --> C
 ```
 
-1. Premier lancement : une petite fenêtre sombre avec une zone « dépose ton fichier ».
-2. L'utilisateur glisse un fichier — il est appliqué immédiatement (par défaut : en boucle et sans
-   son ; volume, cadrage, boucle et vitesse se règlent depuis la fenêtre, le volume aussi depuis la
-   zone de notification).
+1. Premier lancement : une fenêtre au style Windows 11, presque vide — la grille des récents ne
+   contient qu'une tuile « + » avec l'invite « dépose un fichier ou clique ».
+2. L'utilisateur glisse un fichier (n'importe où sur la fenêtre, un voile « Dépose pour appliquer »
+   apparaît le temps du glisser) ou clique la tuile « + » pour le choisir — il est appliqué
+   immédiatement (par défaut : en boucle et sans son). Volume, cadrage, boucle et vitesse se règlent
+   depuis la barre du bas de la fenêtre (le volume aussi depuis la zone de notification) ; le
+   wallpaper qui joue est repérable d'un coup d'œil à son badge dans la grille.
 3. Wallflow s'efface dans la zone de notification ; l'utilisateur n'y repense plus.
 4. Quand un jeu ou une vidéo passe en plein écran, ou que le portable passe sur batterie,
    l'animation se met en pause toute seule — zéro impact sur les performances ou l'autonomie.
