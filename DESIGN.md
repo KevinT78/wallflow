@@ -96,6 +96,31 @@ un wallpaper » ; la grille occupe tout l'espace.
 - **Navigation multi-vues** (page Réglages séparée) : 6 réglages ne justifient pas une
   navigation ; le flyout suffit.
 
+## Performance (session de grilling 2026-07-19)
+
+Budget figé : **< 3 % CPU** quand un wallpaper joue (contenu réel de l'utilisateur : GIF/webp
+animés), machine de référence i5-6300U + HD 520. Baseline reproductible :
+`tools/measure-baseline.ps1` (résultats dans `tools/baseline-results.csv`).
+
+- **Bug corrigé (cause racine n°1)** : recréer un player mpv émet un `DisplaySettingsChanged`,
+  que l'app retransformait en `Rebuild()` → boucle infinie à ~33 Hz (mp4 : 43 % CPU). Garde par
+  signature d'écrans dans `PlayerManager.Rebuild` ; mp4 retombé à ~7 %.
+- **Écart : conversion GIF/webp → mp4 en cache.** Le décodage GIF/webp de mpv est 100 % CPU
+  (webp 17 Mo mesuré à 27 %) ; aucun tuning mpv ne le ramène sous le budget. Décision : au
+  premier Apply d'un `.gif`/`.webp`, conversion ffmpeg en H.264 dans
+  `%LOCALAPPDATA%\Wallflow\cache` (clé = chemin+taille+date), l'original joue pendant la
+  conversion (~20-30 s pour 17 Mo sur la machine de référence) puis bascule à chaud. Les récents
+  et `settings.json` gardent le chemin d'origine. Sans `ffmpeg.exe` ou sur échec : l'original
+  joue tel quel — le cache est une optimisation, jamais un point de défaillance. Pas d'éviction
+  (borné de fait par les 10 récents).
+- **Conséquence distribution** : le zip embarque `ffmpeg.exe` (~145 Mo build BtbN GPL, dans
+  `lib/` hors git comme libmpv — un build ≥ 7.1 est requis pour décoder le webp animé).
+- **Vignettes async** : la grille s'affiche immédiatement (placeholder = nom du fichier),
+  le décodage shell (`IShellItemImageFactory`) part sur le thread pool et remplace le
+  placeholder à l'arrivée — l'ouverture ne bloque plus sur les miniatures (cible < 200 ms).
+- Reste ouvert : budget < 3 % probablement inatteignable pour du mp4 1080p sur ce CPU
+  2 cœurs — à re-mesurer en Release avant d'assouplir.
+
 ## Points de vigilance connus
 
 - **WorkerW** : technique non documentée par Microsoft (SendMessage 0x052C sur Progman) — peut casser sur une mise à jour Windows. Référence d'implémentation : code source de Lively Wallpaper.
