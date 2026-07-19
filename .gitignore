@@ -483,5 +483,14 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# binaire libmpv : trop lourd pour git — voir README pour le récupérer
+# binaires libmpv + ffmpeg : trop lourds pour git — voir README pour les récupérer
 lib/*.dll
+lib/*.exe
+
+# agent-proxy captures (contain full prompts/history)
+tools/agent-proxy/logs/
+# tools/ ignoré par défaut, sauf la baseline perf (décision DESIGN.md : script rejouable dans le repo)
+tools/*
+!tools/measure-baseline.ps1
+!tools/baseline-results.csv
+.claude
