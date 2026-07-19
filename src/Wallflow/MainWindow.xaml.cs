@@ -148,17 +148,31 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         return button;
     }
 
-    private static FrameworkElement BuildThumb(string path)
+    // Placeholder (nom du fichier) affiché immédiatement, décodage shell sur le thread pool,
+    // remplacement à l'arrivée : l'ouverture ne bloque plus sur IShellItemImageFactory
+    // (plusieurs centaines de ms par fichier jamais miniaturisé par l'Explorateur).
+    // Si la grille est reconstruite entre-temps, le host capturé est détaché — écrire dedans
+    // est un no-op inoffensif. Échec de décodage : le placeholder reste, comme avant.
+    private FrameworkElement BuildThumb(string path)
     {
-        if (Thumbnail.For(path) is { } bitmap)
-            return new Image { Source = bitmap, Stretch = Stretch.UniformToFill };
-        return new TextBlock
+        var host = new Grid();
+        host.Children.Add(new TextBlock
         {
             Text = Path.GetFileName(path),
             TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center, Margin = new Thickness(4),
             VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
-        };
+        });
+        Task.Run(() =>
+        {
+            if (Thumbnail.For(path) is { } bitmap) // Freeze() dans Thumbnail.For → transférable entre threads
+                Dispatcher.BeginInvoke(() =>
+                {
+                    host.Children.Clear();
+                    host.Children.Add(new Image { Source = bitmap, Stretch = Stretch.UniformToFill });
+                });
+        });
+        return host;
     }
 
     private ContextMenu BuildRecentMenu(string path)
