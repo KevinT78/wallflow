@@ -11,6 +11,12 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     private string? _current;
     private bool _paused;
     private Settings? _settings;
+    private string _screenSig = "";
+
+    // La recréation d'un player mpv (contexte D3D11 dans le WorkerW) émet elle-même un
+    // DisplaySettingsChanged → boucle infinie de Rebuild si on ne compare pas la config réelle.
+    private static string ScreenSig() =>
+        string.Join(";", Screen.AllScreens.Select(s => s.Bounds));
 
     public void Load(string path)
     {
@@ -41,6 +47,7 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     /// <summary>Écran branché/débranché : on jette tout et on recrée. Brutal mais rare.</summary>
     public void Rebuild()
     {
+        if (ScreenSig() == _screenSig) return; // écrans inchangés : événement parasite
         DisposePlayers();
         if (_current != null) Load(_current);
     }
@@ -56,6 +63,7 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     private void EnsurePlayers()
     {
         if (_entries.Count > 0) return;
+        _screenSig = ScreenSig();
         foreach (var screen in Screen.AllScreens)
         {
             var host = WallpaperHost.CreateHostFor(screen);
