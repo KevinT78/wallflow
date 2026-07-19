@@ -90,7 +90,7 @@ public sealed class AppService
     /// <summary>« Retirer des récents » : ôte l'entrée persistée et notifie ; ne touche ni les players ni le wallpaper courant (même si c'est l'actif).</summary>
     public void RemoveFromRecents(string path)
     {
-        Settings.Recents.Remove(path);
+        Settings.Recents.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
         Settings.Save();
         StateChanged?.Invoke();
     }

@@ -18,6 +18,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private readonly AppService _service;
     private bool _refreshing;
+    private string? _gridKey;
 
     public MainWindow(AppService service)
     {
@@ -68,7 +69,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         _refreshing = false;
 
+        RefreshGrid();
+    }
+
+    // La grille (et le décodage des vignettes via l'API shell) ne se reconstruit que si la liste
+    // des récents ou le wallpaper actif a bougé — pas à chaque StateChanged (ex. drag du slider volume).
+    private void RefreshGrid()
+    {
         var recents = _service.Recents;
+        var key = string.Join("\n", recents) + "\0" + _service.ActiveWallpaper;
+        if (key == _gridKey) return;
+        _gridKey = key;
+
         RecentsList.Items.Clear();
         RecentsList.Items.Add(BuildPlusTile(empty: recents.Count == 0));
         foreach (var path in recents)
@@ -223,7 +235,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnMuteToggle(object sender, RoutedEventArgs e)
     {
-        if (_refreshing) return;
         _service.Settings.Muted = MuteToggle.IsChecked == true;
         _service.ApplyPlaybackSettings();
     }
@@ -252,7 +263,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoopToggle(object sender, RoutedEventArgs e)
     {
-        if (_refreshing) return;
         _service.Settings.Loop = LoopToggle.IsChecked == true;
         _service.ApplyPlaybackSettings();
     }

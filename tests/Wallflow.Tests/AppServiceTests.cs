@@ -102,6 +102,19 @@ public class AppServiceTests
     }
 
     [Fact]
+    public void RemoveFromRecents_MatchesPathCaseInsensitively()
+    {
+        UseTempSettingsDir();
+        var svc = new AppService(new FakePlayerManager());
+        var a = CreateTempMedia(".gif");
+        svc.Apply(a);
+
+        svc.RemoveFromRecents(a.ToUpperInvariant()); // chemins Windows insensibles à la casse
+
+        Assert.Empty(svc.Recents);
+    }
+
+    [Fact]
     public void RemoveFromRecents_ActiveEntry_LeavesPlayersAndCurrentWallpaperUntouched()
     {
         UseTempSettingsDir();
