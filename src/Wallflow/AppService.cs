@@ -67,7 +67,19 @@ public sealed class AppService
         if (!File.Exists(path) || !SupportedExtensions.Contains(Path.GetExtension(path).ToLowerInvariant()))
             return false;
 
-        _players.Load(path);
+        // Joue la version convertie si elle existe déjà ; sinon l'original tout de suite,
+        // et bascule à chaud vers le mp4 dès que la conversion aboutit (si toujours actif).
+        var cached = WallpaperCache.TryGet(path);
+        _players.Load(cached ?? path);
+        if (cached is null)
+            WallpaperCache.ConvertAsync(path, converted =>
+                // Le test « toujours actif » doit vivre dans le lambda dispatché : vérifié sur le
+                // thread pool, un Apply intercalé serait écrasé par le mp4 converti périmé.
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    if (string.Equals(Settings.LastWallpaper, path, StringComparison.OrdinalIgnoreCase))
+                        _players.Load(converted);
+                }));
         Settings.LastWallpaper = path;
         Settings.Recents.Remove(path);
         Settings.Recents.Insert(0, path);
@@ -116,9 +128,15 @@ public sealed class AppService
         else _players.ResumeAll();
     }
 
+    /// <summary>Coupe l'écriture de la clé Run. Isolation des tests uniquement — sans ça,
+    /// chaque dotnet test enregistre testhost.exe au démarrage de Windows (même pattern
+    /// que Settings.DirOverride pour le settings.json).</summary>
+    public static bool SkipRunKey { get; set; }
+
     /// <summary>Réécrite à chaque lancement : le zip portable peut être déplacé, la clé suit l'exe.</summary>
     private void WriteRunKey()
     {
+        if (SkipRunKey) return;
         using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
         if (Settings.AutoStart && Environment.ProcessPath is { } exe)
             key.SetValue("Wallflow", $"\"{exe}\" --tray");

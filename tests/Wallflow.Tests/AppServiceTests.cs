@@ -7,8 +7,14 @@ public class AppServiceTests
 {
     // Isole Settings.Load/Save d'un dossier temporaire : sans ça, RemoveWallpaper
     // (LastWallpaper = null + Save) écraserait le settings.json réel de l'utilisateur.
-    private static void UseTempSettingsDir() =>
+    // Coupe aussi l'écriture de la clé Run : sans ça, chaque run de tests enregistre
+    // testhost.exe dans le démarrage Windows de l'utilisateur (AutoStart est true par défaut).
+    private static void UseTempSettingsDir()
+    {
         Settings.DirOverride = Path.Combine(Path.GetTempPath(), "WallflowTests_" + Guid.NewGuid());
+        AppService.SkipRunKey = true;
+        WallpaperCache.Disabled = true; // sans ça, Apply(.gif) spawnerait un ffmpeg par test
+    }
 
     // Fichier réel (vide) dans le dossier temp isolé : suffit à Apply (File.Exists + extension),
     // le fake PlayerManager ne le décode jamais.
@@ -128,6 +134,20 @@ public class AppServiceTests
         Assert.DoesNotContain(a, svc.Recents); // retiré de la grille
         Assert.Equal(a, svc.ActiveWallpaper);  // mais continue de jouer
         Assert.False(pm.Cleared);              // players intouchés
+    }
+
+    [Fact]
+    public void Constructor_UnderTestIsolation_NeverTouchesRunRegistryKey()
+    {
+        UseTempSettingsDir();
+        const string runPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runPath);
+        var before = key?.GetValue("Wallflow");
+
+        _ = new AppService(new FakePlayerManager()); // AutoStart=true par défaut → écrirait testhost.exe
+
+        using var after = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runPath);
+        Assert.Equal(before, after?.GetValue("Wallflow"));
     }
 
     private sealed class FakePlayerManager : IPlayerManager

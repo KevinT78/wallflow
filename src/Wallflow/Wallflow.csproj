@@ -28,6 +28,9 @@
   <ItemGroup>
     <None Include="..\..\lib\libmpv-2.dll" Link="libmpv-2.dll"
           CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\lib\libmpv-2.dll')" />
+    <!-- ffmpeg ≥ 7.1 requis (décodage webp animé) — conversion GIF/webp → mp4 du cache -->
+    <None Include="..\..\lib\ffmpeg.exe" Link="ffmpeg.exe"
+          CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\lib\ffmpeg.exe')" />
   </ItemGroup>
 
 </Project>
