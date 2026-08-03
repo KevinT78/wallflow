@@ -18,13 +18,16 @@
 | Fenêtre | WPF-UI 4.3.0 : `FluentWindow` backdrop Mica + accent système, redimensionnable ; grille des `Récents` en héros, barre du bas à 3 contrôles (`Flyout` volume / réglages), `SnackbarPresenter` pour les erreurs, icônes `SymbolIcon` (Segoe Fluent) | `MainWindow.xaml(.cs)` |
 | Vignettes | API shell `IShellItemImageFactory`, décodage **asynchrone** (thread pool + Dispatcher) | `Thumbnail.cs`, `MainWindow.BuildThumb` |
 | Conversion perf | ffmpeg.exe embarqué (build ≥ 7.1 requis pour le webp animé, `lib/` hors git comme libmpv) : GIF/webp → mp4 H.264 en cache pour récupérer le décodage matériel | `WallpaperCache.cs` |
-| Persistance | `System.Text.Json`, fichier unique | `%LOCALAPPDATA%\Wallflow\settings.json` |
-| Tests | xunit, mock manuel de `IPlayerManager` ; isolation du réel : `Settings.DirOverride` (settings.json), `AppService.SkipRunKey` (clé registre `Run`), `WallpaperCache.Disabled` (pas de spawn ffmpeg) | `tests/Wallflow.Tests/` |
+| Persistance | `System.Text.Json`, écriture atomique (tmp + `File.Move` overwrite) | `%LOCALAPPDATA%\Wallflow\settings.json` |
+| Journalisation | `Log.cs` : fichier texte rotatif par jour (append verrouillé, ne jette jamais) | `%LOCALAPPDATA%\Wallflow\logs\wallflow-YYYYMMDD.log` |
+| Tests | xunit, mock manuel de `IPlayerManager` ; **parallélisation désactivée** (statiques d'isolation globales au process) ; isolation du réel via `TestIsolation` : `Settings.DirOverride` (settings.json), `AppService.SkipRunKey` (clé registre `Run`), `WallpaperCache.Disabled` (pas de spawn ffmpeg), `Log.Enabled`, `ActivityMonitor.Disabled` ; **garde structurelle** au chargement de l'assemblage de test (`TestAssemblyState` module initializer) — le vrai log/settings/clé Run ne sont jamais touchés, même si un test oublie `TestIsolation` | `tests/Wallflow.Tests/` |
 
 Formats acceptés (`AppService.SupportedExtensions`) : `.gif .webp .mp4 .webm .mkv .png .jpg .jpeg .bmp`
 — `.mkv` s'est ajouté au design initial (gratuit via mpv).
 
 Cibles : Windows 10/11, x64 uniquement. Distribution : zip portable (pas d'installeur).
+Vérification manuelle des comportements live-only (diaporama, veille, économie d'énergie, erreurs
+mpv) : [TEST-MANUEL.md](./TEST-MANUEL.md).
 
 ## Modèle de domaine (non persisté, sauf `Settings`)
 
@@ -35,11 +38,14 @@ sérialisé sur disque.
 classDiagram
     class IPlayerManager {
         <<interface>>
+        +event Action<string>? PlaybackError
         Load(path)
         PauseAll()
         ResumeAll()
         ApplySettings(settings)
+        ApplyPlaybackSettings(settings)
         Rebuild()
+        Resync()
         Clear()
         Dispose()
         PauseSlideshowIfActive() SlideshowSnapshot?
@@ -49,13 +55,15 @@ classDiagram
         Settings settings
         bool manualPause
         bool autoPause
-        SlideshowSnapshot? capturedSlideshow
         string? ActiveWallpaper
+        +event Action<string>? PlaybackError
         Apply(path)
-        ApplyPlaybackSettings()
+        ApplyPlaybackSettings(bool save = true)
         RemoveWallpaper()
         RemoveFromRecents(path)
         SetAutoStart(bool)
+        ResumeCapturedSlideshow()
+        static GridKey(recents, active)
     }
     class PlayerManager {
         MpvPlayer[] players
@@ -63,14 +71,15 @@ classDiagram
     }
     class MpvPlayer {
         IntPtr parentHwnd
-        Load(path)
+        +event Action? PlaybackError
+        Load(path)  // vérifie le code retour de loadfile
         Pause()
         Resume()
         ApplyVolume(vol, muted)
         ApplyVideoFit(fit)
         ApplyLoop(loop)
         ApplySpeed(speed)
-        Dispose()
+        Dispose()  // join(2 s) du thread d'événements sur SHUTDOWN
     }
     class WallpaperHost {
         CreateHostFor(screen) IntPtr
@@ -92,10 +101,16 @@ classDiagram
     }
     class ActivityMonitor {
         event ShouldPauseChanged
+        SetWinEventHook(EVENT_SYSTEM_FOREGROUND)  // callback → Poll immédiat
+        SystemEvents.PowerModeChanged → Poll      // veille / reprise
+        DispatcherTimer toutes les 2 s            // filet de sécurité
+        PowerGetActiveOverlayScheme               // économie d'énergie
+        Dispose()                                 // unhook
     }
     class Settings {
         string lastWallpaper
         string[] recents
+        SlideshowSnapshot? slideshowSnapshot   // persisté (issue 008)
         bool autoStart
         bool autoPauseEnabled
         int volume
@@ -105,6 +120,14 @@ classDiagram
         double speed
         static string? DirOverride
     }
+    class Log {
+        <<static>>
+        bool Enabled
+        string? DirOverride
+        Info(msg)
+        Warn(msg)
+        Error(msg, ex)
+    }
     IPlayerManager <|.. PlayerManager
     AppService "1" --> "1" IPlayerManager : pilote
     AppService "1" --> "1" Settings : lit / écrit
@@ -112,9 +135,12 @@ classDiagram
     AppService ..> WallpaperCache : résout / convertit
     PlayerManager "1" --> "*" MpvPlayer : un par écran
     MpvPlayer ..> WallpaperHost : parent HWND
-    AppService ..> SlideshowSnapshot : capture en mémoire
+    AppService ..> SlideshowSnapshot : persiste (issue 008)
     WallpaperHost ..> SlideshowSnapshot : produit / consomme
     PlayerManager ..> WallpaperHost : délègue diaporama
+    PlayerManager o-- MpvPlayer : agrège PlaybackError
+    AppService --> PlayerManager : PlaybackError → Snackbar
+    AppService ..> Log : journalise
 ```
 
 Frontières (décision figée) : tout le WinAPI **et le COM `IDesktopWallpaper`** (diaporama natif) sont
@@ -134,7 +160,7 @@ d'un jeu plein écran lève `autoPause` mais ne doit jamais lever une pause manu
 stateDiagram-v2
     [*] --> Playing : Apply(path) ou restauration au boot
     Playing --> PausedAuto : ActivityMonitor détecte plein écran ou batterie
-    PausedAuto --> Playing : la condition disparaît (poll suivant)
+    PausedAuto --> Playing : la condition disparaît (événement hook/power)
     Playing --> PausedManual : Utilisateur clique Pause
     PausedManual --> Playing : Utilisateur clique Reprendre
     PausedAuto --> PausedManual : Utilisateur clique Pause pendant une pause auto
@@ -180,6 +206,10 @@ pas être écrasé par une conversion périmée). Pas d'éviction du cache (born
 La validation d'entrée (existence du fichier, extension dans la liste supportée) est la seule
 frontière de confiance du produit : tout le reste est local et mono-utilisateur.
 
+Une erreur de lecture détectée en cours de route (propriété mpv `playback-error` ou code retour de
+`loadfile` ≠ 0) remonte jusqu'à la Snackbar via `IPlayerManager.PlaybackError`. L'état en mémoire
+reste cohérent : l'erreur ne change ni les `Récents` ni le `LastWallpaper`.
+
 ### Retirer le fond d'écran / Quitter (Restauration du bureau)
 
 Détruire les fenêtres hôtes ne fait **pas** réapparaître le fond natif : Windows laisse le bureau
@@ -190,7 +220,7 @@ au shell de repeindre le fond enregistré.
 ```mermaid
 flowchart TD
     A["Retirer le fond<br/>(flyout ⚙ / menu tray)"] --> B["AppService.RemoveWallpaper()"]
-    B --> R["ResumeCapturedSlideshow()<br/>si capture en mémoire → ResumeSlideshow + oubli"]
+    B --> R["ResumeCapturedSlideshow()<br/>si snapshot persisté → ResumeSlideshow + oubli"]
     R --> C["Settings.LastWallpaper = null"]
     C --> D["PlayerManager.Clear()<br/>teardown players + RestoreDesktop()"]
     D --> E["Settings.Save() + StateChanged"]
@@ -257,6 +287,11 @@ les players fraîchement créés (démarrage, `Rebuild`) partent des défauts fi
 construction. Les valeurs hors limites sont clampées dans les setters de `Settings`
 (volume 0-100, vitesse 0.25-4.0, cadrage restreint à cover/fit/fill).
 
+Le **volume** se distingue des autres réglages : pendant le drag du slider,
+`ApplyPlaybackSettings(save: false)` pousse la valeur à chaud aux players **sans toucher au
+disque** ; la persistance n'a lieu qu'à la fin du drag (`Thumb.DragCompletedEvent` →
+`Settings.Save()`). Le menu du tray (presets 25/50/75/100 %) garde l'écriture immédiate.
+
 ### Reconstruction multi-écran
 
 `SystemEvents.DisplaySettingsChanged` → `PlayerManager.Rebuild()` : dispose tous les
@@ -268,6 +303,13 @@ et les réglages de lecture. Brutal mais simple ; un changement d'écran est un 
 > (mp4 mesuré à 43 % CPU, retombé à ~7 % après correction). `Rebuild` compare donc une signature
 > de la config réelle (`ScreenSig()` : bounds de `Screen.AllScreens`) et ne reconstruit que si
 > elle a changé.
+
+La **reprise de veille** (`SystemEvents.PowerModeChanged` = `Resume`) ne re-enumère pas les écrans
+— mpv peut perdre son contexte D3D11 pendant l'arrêt du GPU : `IPlayerManager.Resync()` rejoue le
+wallpaper courant sur place (reload forcé, sans toucher à la garde `ScreenSig`). Les événements
+`SystemEvents` arrivent sur un thread de pool : `AppService` les marshale vers le `Dispatcher`
+(`OnUiThread`, no-op si aucune `Application`) avant de toucher aux players — pas de race sur le
+WorkerW entre un hook système et la boucle UI.
 
 ## Intégration bureau (WorkerW)
 
@@ -284,6 +326,14 @@ Options mpv posées au constructeur (défauts sûrs, écrasés ensuite par `Appl
 code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se pilote via
 `panscan` + `keepaspect` (cover = panscan 1 ; fit = panscan 0 ; fill = keepaspect no) — et la
 vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait rejeté par mpv).
+
+`MpvPlayer` fait tourner une boucle d'événements mpv (`mpv_wait_event`, thread `mpv-events` en
+arrière-plan) pour observer la propriété `playback-error`. `Load` vérifie le code retour de
+`loadfile` ; une erreur remonte `PlaybackError` → `PlayerManager` (agrégé) → `AppService` →
+`MainWindow` (Snackbar via `Dispatcher.BeginInvoke`) — un fichier corrompu ou injouable est donc
+visible par l'Utilisateur au lieu d'un écran figé silencieux. `Dispose` attend le thread
+d'événements (join 2 s) après `mpv_terminate_destroy` : pas de libération de contexte pendant que
+mpv tourne encore.
 
 ## Anti-flicker : coupure du diaporama Windows natif
 
@@ -306,8 +356,10 @@ Deux couches, séparation nette :
 - **Orchestration** dans `AppService` (testable via le seam `IPlayerManager`) : capture à la
   **transition `LastWallpaper == null` → actif** uniquement (un changement d'image d'un `Wallpaper`
   déjà actif ne recapture pas ; `Rebuild` non plus). `RemoveWallpaper()` et `Shutdown()` appellent
-  `ResumeCapturedSlideshow()` (restaure puis oublie). Snapshot **en mémoire seulement** — la
-  persistance résiliente au crash est l'issue 008.
+  `ResumeCapturedSlideshow()` (restaure puis oublie). Le snapshot vit dans
+  `Settings.SlideshowSnapshot`, **persisté dans settings.json** (issue 008, commit `3dbc384`) : après
+  un crash, il survit et le diaporama est restauré au prochain `Retirer le fond d'écran` ou
+  `Quitter` — plus de config de diaporama perdue.
 
 > ⚠️ **Écarts réel vs intention (vérifiés live, Win10 19045)** — le PRD prévoyait de couper via
 > l'effet de bord de `SetWallpaper(image courante)` et de détecter via `GetStatus() == DSS_ENABLED`.
@@ -323,11 +375,24 @@ Deux couches, séparation nette :
 
 | Tâche | Déclencheur | Planning | Effet |
 |-------|-------------|----------|-------|
-| Détection plein écran | `DispatcherTimer` dans `ActivityMonitor` | toutes les 2 s | `GetForegroundWindow` + comparaison de ses bounds à ceux du monitor → `autoPause` |
-| Détection batterie | même timer | toutes les 2 s | `PowerLineStatus` / économie d'énergie → `autoPause` |
+| Détection plein écran | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` (callback → `Poll()` immédiat) | immédiat | `GetForegroundWindow` + comparaison de ses bounds à ceux du monitor → `autoPause` |
+| Détection batterie | `SystemEvents.PowerModeChanged` | immédiat | `PowerLineStatus` → `autoPause` |
+| Économie d'énergie | idem + `Poll()` périodique | immédiat / 2 s | `PowerGetActiveOverlayScheme` == `GUID_BATTERY_SAVER_OVERLAY_SCHEME` → `autoPause` |
+| Filet de sécurité | `DispatcherTimer` dans `ActivityMonitor` | toutes les 2 s | re-`Poll()` (le hook foreground ne couvre pas les changements de fenêtre au sein du même process) |
 
-Polling assumé (`ponytail`) : des hooks WinEvent remplaceront le timer si le poll devient visible
-en consommation, ce qui est improbable à 0,5 Hz.
+Déclenchement **événementiel** (hook WinEvent + notifications de power), le timer 2 s ne sert plus
+que de filet — le premier `Poll` est aussi déclenché par le callback du hook. Hook posé via
+`SetWinEventHook(WINEVENT_OUTOFCONTEXT)` (callback sur le thread UI du Dispatcher, pas de race sur
+`GetForegroundWindow`) ; échec du hook → simple warn (best-effort, le timer prend le relais) ;
+`Dispose()` décroche le hook. Le contrôle d'économie d'énergie (`PowerGetActiveOverlayScheme`,
+best-effort) est distinct du `PowerLineStatus` : sur un PC **branché** en mode Économie d'énergie,
+le wallpaper doit aussi se mettre en pause. `Poll` est **blindé** (try/catch) : il est appelé depuis
+des callbacks système où une exception est fatale — un échec de détection ne doit jamais tuer l'app.
+
+> ⚠️ `PowerGetActiveOverlayScheme` n'existe que sur **Windows 11** (build ≥ 22000). Sur **Windows 10**
+> il lève `EntryPointNotFoundException` (crash réel 2026-08-03, `0xe0434352`) : détecté une fois puis
+> court-circuité. Dégradation assumée : sur Win10 seule la pause batterie (`PowerLineStatus`) reste
+> active ; l'économie d'énergie est détectée sur Win11.
 
 ## Persistance
 
@@ -349,9 +414,12 @@ Un seul fichier, `%LOCALAPPDATA%\Wallflow\settings.json`, réécrit en entier à
 
 Pas à côté de l'exe : le dossier portable peut être déplacé ou en lecture seule — LOCALAPPDATA
 survit aux deux. À côté du fichier vit `%LOCALAPPDATA%\Wallflow\cache\` (mp4 convertis par
-`WallpaperCache`, nommés par hash, jamais purgés). Les `recents` stockent des **chemins**, pas des copies : un fichier supprimé par
-l'utilisateur disparaît de la grille (`AppService.Recents` filtre sur `File.Exists`), mais
-**n'est jamais purgé du JSON** — écart réel vs intention, relevé en code-review, à corriger ou assumer.
+`WallpaperCache`, nommés par hash, jamais purgés) et `%LOCALAPPDATA%\Wallflow\logs\` (journaux
+rotatifs de `Log`). Écriture **atomique** : `settings.json.tmp` + `StreamWriter.Flush(true)` +
+`File.Move(..., overwrite: true)` — une coupure de courant ne laisse jamais un JSON tronqué à la
+place du dernier bon. Les `recents` stockent des **chemins**, pas des copies ; `Settings.Save()`
+**purge** ceux qui ne pointent plus vers un fichier existant (`File.Exists`) — un fichier supprimé
+par l'utilisateur disparaît de la grille *et* du JSON.
 
 ## Vignettes des récents
 

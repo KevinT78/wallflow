@@ -28,6 +28,7 @@ mindmap
       GIF, WebP animé, vidéo, image
       Même wallpaper sur tous les écrans
       Coupe le diaporama Windows le temps de l'affichage (anti-flicker)
+      Un fichier illisible → bulle d'erreur, rien n'est changé
     🕘 Récents
       Grille des 10 derniers, en héros de la fenêtre
       Un clic pour ré-appliquer
@@ -38,6 +39,7 @@ mindmap
       Bouton pause manuelle
       Pause auto en plein écran
       Pause auto sur batterie
+      Pause auto en mode Économie d'énergie
     🔊 Lecture
       Volume et muet, avec pourcentage
       Cadrage cover, fit ou fill
@@ -81,8 +83,9 @@ flowchart TD
    depuis la barre du bas de la fenêtre (le volume aussi depuis la zone de notification) ; le
    wallpaper qui joue est repérable d'un coup d'œil à son badge dans la grille.
 3. Wallflow s'efface dans la zone de notification ; l'utilisateur n'y repense plus.
-4. Quand un jeu ou une vidéo passe en plein écran, ou que le portable passe sur batterie,
-   l'animation se met en pause toute seule — zéro impact sur les performances ou l'autonomie.
+4. Quand un jeu ou une vidéo passe en plein écran, que le portable passe sur batterie, ou que le
+   mode Économie d'énergie s'active, l'animation se met en pause toute seule — zéro impact sur les
+   performances ou l'autonomie.
 5. Au redémarrage de Windows, le wallpaper revient sans aucune action.
 6. À tout moment, **Retirer le fond d'écran** (depuis la fenêtre ou la zone de notification) rend le
    bureau Windows d'origine tout en gardant l'application prête à ré-appliquer ; **Quitter** ferme
