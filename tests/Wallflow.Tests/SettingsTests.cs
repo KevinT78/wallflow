@@ -28,6 +28,7 @@ public class SettingsTests
             Speed = 2.5,
             AutoStart = false,
             AutoPauseEnabled = false,
+            SlideshowSnapshot = new(@"C:\Users\Me\Pictures\Slides", 600000, true),
         };
         var json = JsonSerializer.Serialize(s);
         var deserialized = JsonSerializer.Deserialize<Settings>(json)!;
@@ -39,6 +40,10 @@ public class SettingsTests
         Assert.Equal(2.5, deserialized.Speed);
         Assert.False(deserialized.AutoStart);
         Assert.False(deserialized.AutoPauseEnabled);
+        Assert.NotNull(deserialized.SlideshowSnapshot);
+        Assert.Equal(@"C:\Users\Me\Pictures\Slides", deserialized.SlideshowSnapshot!.FolderPath);
+        Assert.Equal(600000u, deserialized.SlideshowSnapshot.IntervalMs);
+        Assert.True(deserialized.SlideshowSnapshot.Shuffle);
     }
 
     [Fact]

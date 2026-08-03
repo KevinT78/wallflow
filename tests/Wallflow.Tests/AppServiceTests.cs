@@ -219,6 +219,22 @@ public class AppServiceTests
     }
 
     [Fact]
+    public void RemoveWallpaper_WithStaleSnapshot_RestoresAndClears()
+    {
+        UseTempSettingsDir();
+        var pm = new FakePlayerManager();
+        var svc = new AppService(pm);
+
+        svc.Settings.SlideshowSnapshot = Snap; // simule un crash : snapshot persisté mais perdu en mémoire
+
+        svc.RemoveWallpaper();
+
+        Assert.Equal(1, pm.ResumeSlideshowCalls);
+        Assert.Equal(Snap, pm.LastResumed);
+        Assert.Null(svc.Settings.SlideshowSnapshot);
+    }
+
+    [Fact]
     public void Shutdown_RestoresCapturedSlideshow()
     {
         UseTempSettingsDir();

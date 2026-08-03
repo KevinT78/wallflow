@@ -21,10 +21,6 @@ public sealed class AppService
     private bool _manualPause;
     private bool _autoPause;
 
-    // Config du diaporama Windows capturée à la coupure, restaurée au retrait/quitter (issue 007).
-    // En mémoire seulement ici — la persistance résiliente au crash est l'issue 008.
-    private SlideshowSnapshot? _capturedSlideshow;
-
     public AppService() : this(new PlayerManager()) { }
 
     public AppService(IPlayerManager playerManager)
@@ -74,7 +70,7 @@ public sealed class AppService
         // Transition « aucun Wallpaper actif → actif » : coupe le diaporama Windows et garde sa
         // config. Un simple changement d'image (Wallpaper déjà actif) ne redéclenche pas de capture.
         if (Settings.LastWallpaper is null)
-            _capturedSlideshow = _players.PauseSlideshowIfActive();
+            Settings.SlideshowSnapshot = _players.PauseSlideshowIfActive();
 
         // Joue la version convertie si elle existe déjà ; sinon l'original tout de suite,
         // et bascule à chaud vers le mp4 dès que la conversion aboutit (si toujours actif).
@@ -109,12 +105,13 @@ public sealed class AppService
         StateChanged?.Invoke();
     }
 
-    /// <summary>Restaure le diaporama Windows capturé s'il y en a un, puis l'oublie. No-op sinon.</summary>
+    /// <summary>Restaure le diaporama Windows capturé (issu du Settings persisté, donc résilient au crash), puis l'oublie. No-op sinon.</summary>
     private void ResumeCapturedSlideshow()
     {
-        if (_capturedSlideshow is not { } snap) return;
+        if (Settings.SlideshowSnapshot is not { } snap) return;
         _players.ResumeSlideshow(snap);
-        _capturedSlideshow = null;
+        Settings.SlideshowSnapshot = null;
+        Settings.Save();
     }
 
     /// <summary>« Retirer des récents » : ôte l'entrée persistée et notifie ; ne touche ni les players ni le wallpaper courant (même si c'est l'actif).</summary>

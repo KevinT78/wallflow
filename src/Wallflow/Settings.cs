@@ -28,6 +28,9 @@ public class Settings
 
     public bool Loop { get; set; } = true;
 
+    /// <summary>Snapshot du diaporama Windows capturé, persisté pour résilience au crash (issue 008).</summary>
+    public SlideshowSnapshot? SlideshowSnapshot { get; set; }
+
     private double _speed = 1.0;
     public double Speed
     {
