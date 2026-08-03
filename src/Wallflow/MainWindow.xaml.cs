@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Wpf.Ui.Controls;
 using Button = System.Windows.Controls.Button;
@@ -26,6 +27,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         InitializeComponent();
 
         VolumeSlider.ValueChanged += OnVolumeChanged;
+        // Persiste le volume une seule fois en fin de glissement, pas à chaque tick.
+        VolumeSlider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler(OnVolumeDragCompleted));
         MuteToggle.Click += OnMuteToggle;
         FitCover.Checked += OnVideoFitChanged;
         FitFit.Checked += OnVideoFitChanged;
@@ -38,6 +41,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         AutoStartToggle.Click += OnAutoStartToggle;
 
         _service.StateChanged += () => Dispatcher.Invoke(RefreshUi);
+        // L'erreur de lecture arrive sur la thread d'événements mpv → marshaling vers le thread UI.
+        _service.PlaybackError += message => Dispatcher.BeginInvoke(() => ShowError(message));
         RefreshUi();
     }
 
@@ -77,7 +82,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void RefreshGrid()
     {
         var recents = _service.Recents;
-        var key = string.Join("\n", recents) + "\0" + _service.ActiveWallpaper;
+        var key = AppService.GridKey(recents, _service.ActiveWallpaper);
         if (key == _gridKey) return;
         _gridKey = key;
 
@@ -244,6 +249,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (_refreshing) return;
         _service.Settings.Volume = (int)VolumeSlider.Value;
         _service.Settings.Muted = MuteToggle.IsChecked == true;
+        // À chaud, sans écrire le disque à chaque tick du drag : la persistance se fait à la fin
+        // du glissement (OnVolumeDragCompleted), sinon on écrit settings.json des dizaines de fois.
+        _service.ApplyPlaybackSettings(save: false);
+    }
+
+    private void OnVolumeDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (_refreshing) return;
+        _service.Settings.Volume = (int)VolumeSlider.Value;
         _service.ApplyPlaybackSettings();
     }
 

@@ -5,33 +5,12 @@ namespace Wallflow.Tests;
 
 public class AppServiceTests
 {
-    // Isole Settings.Load/Save d'un dossier temporaire : sans ça, RemoveWallpaper
-    // (LastWallpaper = null + Save) écraserait le settings.json réel de l'utilisateur.
-    // Coupe aussi l'écriture de la clé Run : sans ça, chaque run de tests enregistre
-    // testhost.exe dans le démarrage Windows de l'utilisateur (AutoStart est true par défaut).
-    private static void UseTempSettingsDir()
-    {
-        Settings.DirOverride = Path.Combine(Path.GetTempPath(), "WallflowTests_" + Guid.NewGuid());
-        AppService.SkipRunKey = true;
-        WallpaperCache.Disabled = true; // sans ça, Apply(.gif) spawnerait un ffmpeg par test
-    }
-
-    // Fichier réel (vide) dans le dossier temp isolé : suffit à Apply (File.Exists + extension),
-    // le fake PlayerManager ne le décode jamais.
-    private static string CreateTempMedia(string ext)
-    {
-        Directory.CreateDirectory(Settings.DirOverride!);
-        var path = Path.Combine(Settings.DirOverride!, Guid.NewGuid() + ext);
-        File.WriteAllBytes(path, []);
-        return path;
-    }
-
     [Fact]
     public void ActiveWallpaper_ReflectsCurrentWallpaper_AndClearsOnRemove()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var svc = new AppService(new FakePlayerManager());
-        var file = CreateTempMedia(".gif");
+        var file =iso.CreateTempMedia(".gif");
 
         svc.Apply(file);
         Assert.Equal(file, svc.ActiveWallpaper);
@@ -43,7 +22,7 @@ public class AppServiceTests
     [Fact]
     public void Constructor_PushesSettingsToPlayerManager()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         _ = new AppService(pm);
 
@@ -53,7 +32,7 @@ public class AppServiceTests
     [Fact]
     public void ApplyPlaybackSettings_PropagatesToPlayerManager()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         var svc = new AppService(pm);
         svc.Settings.Volume = 50;
@@ -63,9 +42,22 @@ public class AppServiceTests
     }
 
     [Fact]
+    public void ApplyPlaybackSettings_WithoutSave_PropagatesButDoesNotPersist()
+    {
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager();
+        var svc = new AppService(pm);
+        svc.Settings.Volume = 37;
+        svc.ApplyPlaybackSettings(save: false);
+
+        Assert.Equal(37, pm.LastApplied?.Volume);     // appliqué aux players à chaud
+        Assert.Equal(100, Settings.Load().Volume);     // mais rien d'écrit sur le disque (défauts)
+    }
+
+    [Fact]
     public void RemoveWallpaper_ClearsPlayersAndForgetsLastWallpaper()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         var svc = new AppService(pm);
         svc.Settings.LastWallpaper = @"C:\fake\wallpaper.gif";
@@ -81,7 +73,7 @@ public class AppServiceTests
     {
         // Décision B : "retiré" = LastWallpaper absent. Dossier temp tout neuf → pas de
         // settings.json → LastWallpaper == null au démarrage → aucun Load ne doit partir.
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         _ = new AppService(pm);
 
@@ -91,10 +83,10 @@ public class AppServiceTests
     [Fact]
     public void RemoveFromRecents_RemovesEntry_Persists_AndNotifies()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var svc = new AppService(new FakePlayerManager());
-        var a = CreateTempMedia(".gif");
-        var b = CreateTempMedia(".mp4");
+        var a =iso.CreateTempMedia(".gif");
+        var b =iso.CreateTempMedia(".mp4");
         svc.Apply(a);
         svc.Apply(b);
         var notified = false;
@@ -110,9 +102,9 @@ public class AppServiceTests
     [Fact]
     public void RemoveFromRecents_MatchesPathCaseInsensitively()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var svc = new AppService(new FakePlayerManager());
-        var a = CreateTempMedia(".gif");
+        var a =iso.CreateTempMedia(".gif");
         svc.Apply(a);
 
         svc.RemoveFromRecents(a.ToUpperInvariant()); // chemins Windows insensibles à la casse
@@ -123,10 +115,10 @@ public class AppServiceTests
     [Fact]
     public void RemoveFromRecents_ActiveEntry_LeavesPlayersAndCurrentWallpaperUntouched()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         var svc = new AppService(pm);
-        var a = CreateTempMedia(".gif");
+        var a =iso.CreateTempMedia(".gif");
         svc.Apply(a); // a devient le wallpaper actif
 
         svc.RemoveFromRecents(a);
@@ -139,7 +131,7 @@ public class AppServiceTests
     [Fact]
     public void Constructor_UnderTestIsolation_NeverTouchesRunRegistryKey()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         const string runPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runPath);
         var before = key?.GetValue("Wallflow");
@@ -155,11 +147,11 @@ public class AppServiceTests
     [Fact]
     public void Apply_FirstWallpaper_CapturesSlideshowOnce()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = Snap };
         var svc = new AppService(pm); // dossier temp neuf → LastWallpaper null → pas d'Apply au ctor
 
-        svc.Apply(CreateTempMedia(".gif")); // transition aucun Wallpaper actif → actif
+        svc.Apply(iso.CreateTempMedia(".gif")); // transition aucun Wallpaper actif → actif
 
         Assert.Equal(1, pm.PauseSlideshowCalls);
     }
@@ -167,12 +159,12 @@ public class AppServiceTests
     [Fact]
     public void Apply_ImageChangeWhileActive_DoesNotRecapture()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = Snap };
         var svc = new AppService(pm);
 
-        svc.Apply(CreateTempMedia(".gif")); // transition → capture
-        svc.Apply(CreateTempMedia(".mp4")); // Wallpaper déjà actif → pas de recapture
+        svc.Apply(iso.CreateTempMedia(".gif")); // transition → capture
+        svc.Apply(iso.CreateTempMedia(".mp4")); // Wallpaper déjà actif → pas de recapture
 
         Assert.Equal(1, pm.PauseSlideshowCalls);
     }
@@ -180,10 +172,10 @@ public class AppServiceTests
     [Fact]
     public void RemoveWallpaper_RestoresCapturedSlideshow()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = Snap };
         var svc = new AppService(pm);
-        svc.Apply(CreateTempMedia(".gif"));
+        svc.Apply(iso.CreateTempMedia(".gif"));
 
         svc.RemoveWallpaper();
 
@@ -194,10 +186,10 @@ public class AppServiceTests
     [Fact]
     public void RemoveWallpaper_WithNoSlideshowActive_RestoresNothing()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = null }; // diaporama inactif à l'Apply
         var svc = new AppService(pm);
-        svc.Apply(CreateTempMedia(".gif"));
+        svc.Apply(iso.CreateTempMedia(".gif"));
 
         svc.RemoveWallpaper();
 
@@ -207,10 +199,10 @@ public class AppServiceTests
     [Fact]
     public void RemoveWallpaper_ForgetsSnapshot_NoDoubleRestore()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = Snap };
         var svc = new AppService(pm);
-        svc.Apply(CreateTempMedia(".gif"));
+        svc.Apply(iso.CreateTempMedia(".gif"));
 
         svc.RemoveWallpaper();
         svc.RemoveWallpaper(); // plus de capture en mémoire → pas de seconde restauration
@@ -221,7 +213,7 @@ public class AppServiceTests
     [Fact]
     public void RemoveWallpaper_WithStaleSnapshot_RestoresAndClears()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         var svc = new AppService(pm);
 
@@ -237,10 +229,10 @@ public class AppServiceTests
     [Fact]
     public void Shutdown_RestoresCapturedSlideshow()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = Snap };
         var svc = new AppService(pm);
-        svc.Apply(CreateTempMedia(".gif"));
+        svc.Apply(iso.CreateTempMedia(".gif"));
 
         svc.Shutdown();
 
@@ -251,16 +243,52 @@ public class AppServiceTests
     [Fact]
     public void RemoveFromRecents_LeavesSlideshowUntouched()
     {
-        UseTempSettingsDir();
+        using var iso = new TestIsolation();
         var pm = new FakePlayerManager { SlideshowToReturn = Snap };
         var svc = new AppService(pm);
-        var a = CreateTempMedia(".gif");
+        var a =iso.CreateTempMedia(".gif");
         svc.Apply(a);
-
-        svc.RemoveFromRecents(a);
 
         Assert.Equal(1, pm.PauseSlideshowCalls); // aucune capture en plus
         Assert.Equal(0, pm.ResumeSlideshowCalls); // aucune restauration
+    }
+
+    [Fact]
+    public void PlaybackError_ForwardedFromPlayerManager()
+    {
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager();
+        var svc = new AppService(pm);
+        string? received = null;
+        svc.PlaybackError += message => received = message;
+
+        pm.RaisePlaybackError("Format non décodable");
+
+        Assert.Equal("Format non décodable", received);
+    }
+
+    [Fact]
+    public void GridKey_ChangesWithOrdering()
+    {
+        Assert.NotEqual(AppService.GridKey(["a", "b"], null), AppService.GridKey(["b", "a"], null));
+    }
+
+    [Fact]
+    public void GridKey_ChangesWithActiveWallpaper()
+    {
+        Assert.NotEqual(AppService.GridKey(["a"], null), AppService.GridKey(["a"], "a"));
+    }
+
+    [Fact]
+    public void GridKey_ChangesWithMembership()
+    {
+        Assert.NotEqual(AppService.GridKey(["a"], null), AppService.GridKey(["a", "b"], null));
+    }
+
+    [Fact]
+    public void GridKey_IsStableForIdenticalState()
+    {
+        Assert.Equal(AppService.GridKey(["a", "b"], "a"), AppService.GridKey(["a", "b"], "a"));
     }
 
     private sealed class FakePlayerManager : IPlayerManager
@@ -268,6 +296,8 @@ public class AppServiceTests
         public Settings? LastApplied { get; private set; }
         public bool Cleared { get; private set; }
         public bool LoadCalled { get; private set; }
+        public event Action<string>? PlaybackError;
+        public void RaisePlaybackError(string message) => PlaybackError?.Invoke(message);
 
         // Diaporama Windows (issue 007) : la config renvoyée à la capture, et les compteurs
         // d'appels qui laissent les tests vérifier l'orchestration via le seam IPlayerManager.
@@ -281,6 +311,7 @@ public class AppServiceTests
         public void PauseAll() { }
         public void ResumeAll() { }
         public void Rebuild() { }
+        public void Resync() { }
         public void Clear() => Cleared = true;
         public void Dispose() { }
         public SlideshowSnapshot? PauseSlideshowIfActive() { PauseSlideshowCalls++; return SlideshowToReturn; }

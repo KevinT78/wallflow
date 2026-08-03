@@ -13,6 +13,9 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     private Settings? _settings;
     private string _screenSig = "";
 
+    /// <summary>Agrège les PlaybackError des MpvPlayer (émis depuis la thread d'événements mpv).</summary>
+    public event Action<string>? PlaybackError;
+
     // La recréation d'un player mpv (contexte D3D11 dans le WorkerW) émet elle-même un
     // DisplaySettingsChanged → boucle infinie de Rebuild si on ne compare pas la config réelle.
     private static string ScreenSig() =>
@@ -48,6 +51,13 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     public void Rebuild()
     {
         if (ScreenSig() == _screenSig) return; // écrans inchangés : événement parasite
+        Resync();
+    }
+
+    /// <summary>Reload forcé (veille/reprise, etc.) : même teardown qu'un Rebuild mais sans la
+    /// garde de signature — on veut rejouer le wallpaper même si la config d'écrans n'a pas bougé.</summary>
+    public void Resync()
+    {
         DisposePlayers();
         if (_current != null) Load(_current);
     }
@@ -67,14 +77,19 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
         foreach (var screen in Screen.AllScreens)
         {
             var host = WallpaperHost.CreateHostFor(screen);
-            _entries.Add(new Entry(host, new MpvPlayer(host)));
+            var player = new MpvPlayer(host);
+            player.PlaybackError += OnPlayerError;
+            _entries.Add(new Entry(host, player));
         }
     }
+
+    private void OnPlayerError(string message) => PlaybackError?.Invoke(message);
 
     private void DisposePlayers()
     {
         foreach (var e in _entries)
         {
+            e.Player.PlaybackError -= OnPlayerError;
             e.Player.Dispose();
             WallpaperHost.DestroyHost(e.Host);
         }

@@ -109,7 +109,7 @@ public static class WallpaperHost
 
         IDesktopWallpaper dw;
         try { dw = CreateDesktopWallpaper(); }
-        catch (Exception) { return null; }
+        catch (Exception ex) { Log.Warn($"PauseSlideshowIfActive : impossible de créer IDesktopWallpaper ({ex.Message})"); return null; }
 
         // Capture best-effort : dossier/intervalle servent à restaurer plus tard. Son échec ne doit
         // PAS empêcher de couper le défilement — le vrai but est de stopper le flicker, pas de capturer.
@@ -122,10 +122,10 @@ public static class WallpaperHost
             dw.GetSlideshowOptions(out var options, out var tick);
             snapshot = new SlideshowSnapshot(folder, tick, (options & DESKTOP_SLIDESHOW_OPTIONS.DSO_SHUFFLEIMAGES) != 0);
         }
-        catch (Exception) { /* capture ratée : on coupe quand même le défilement ci-dessous */ }
+        catch (Exception ex) { Log.Warn($"PauseSlideshowIfActive : capture ratée ({ex.Message})"); /* capture ratée : on coupe quand même le défilement ci-dessous */ }
 
         try { dw.Enable(false); } // coupe le défilement (status → 0, plus de tick) — toujours tenté
-        catch (Exception) { /* best-effort : ni capture ni coupure plutôt qu'un Apply cassé */ }
+        catch (Exception ex) { Log.Warn($"PauseSlideshowIfActive : coupure du défilement échouée ({ex.Message})"); /* best-effort : ni capture ni coupure plutôt qu'un Apply cassé */ }
 
         return snapshot;
     }
@@ -145,7 +145,7 @@ public static class WallpaperHost
             dw.SetSlideshowOptions(options, snapshot.IntervalMs);
             dw.Enable(true); // réactive le défilement coupé par PauseSlideshowIfActive
         }
-        catch (Exception) { /* best-effort : le diaporama ne reprend pas, mais l'app ne crashe pas */ }
+        catch (Exception ex) { Log.Warn($"ResumeSlideshow échoué pour {snapshot.FolderPath} ({ex.Message})"); /* best-effort : le diaporama ne reprend pas, mais l'app ne crashe pas */ }
     }
 
     /// <summary>BackgroundType : 0=image, 1=couleur, 2=diaporama. Seul signal fiable du mode courant.</summary>

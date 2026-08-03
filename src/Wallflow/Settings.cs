@@ -52,13 +52,28 @@ public class Settings
             if (File.Exists(FilePath))
                 return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
         }
-        catch (Exception) { /* fichier corrompu → repartir de zéro */ }
+        catch (Exception ex) { Log.Warn($"settings.json illisible/corrompu, reprise à zéro ({ex.Message})"); }
         return new Settings();
     }
 
     public void Save()
     {
+        // Purge les récents dont le fichier a disparu (écart relevé en doc : la grille les filtrait
+        // déjà à l'affichage, mais le JSON gardait les chemins morts). Un réseau temporairement
+        // injoignable perdrait l'entrée — assumé, comme le filtrage d'affichage existant.
+        Recents.RemoveAll(p => !File.Exists(p));
+
         Directory.CreateDirectory(Dir);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        // Écriture atomique : temp puis rename par-dessus l'original, flush durable avant.
+        // Un crash en plein WriteAllText corrompait settings.json (perte des récents/réglages).
+        var tmp = FilePath + ".tmp";
+        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        using (var writer = new StreamWriter(fs))
+        {
+            writer.Write(JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            writer.Flush();
+            fs.Flush(true);
+        }
+        File.Move(tmp, FilePath, overwrite: true);
     }
 }

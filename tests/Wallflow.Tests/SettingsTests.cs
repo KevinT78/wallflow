@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using Xunit;
 
@@ -58,5 +59,32 @@ public class SettingsTests
     {
         var s = new Settings { Speed = 10.0 };
         Assert.Equal(4.0, s.Speed);
+    }
+
+    [Fact]
+    public void Save_IsAtomic_NoTempLeftBehind()
+    {
+        using var iso = new TestIsolation();
+        var s = new Settings { Volume = 42, LastWallpaper = @"C:\x\y.gif" };
+        s.Save();
+
+        Assert.False(File.Exists(Path.Combine(Settings.DirOverride!, "settings.json.tmp")));
+        var loaded = Settings.Load();
+        Assert.Equal(42, loaded.Volume);
+        Assert.Equal(@"C:\x\y.gif", loaded.LastWallpaper);
+    }
+
+    [Fact]
+    public void Save_PurgesRecentsPointingToMissingFiles()
+    {
+        using var iso = new TestIsolation();
+        var existing = iso.CreateTempMedia(".gif");
+        var gone = Path.Combine(Settings.DirOverride!, "gone.mp4"); // jamais créé sur disque
+        var s = new Settings { Recents = [existing, gone] };
+        s.Save();
+
+        var loaded = Settings.Load();
+        Assert.Single(loaded.Recents);
+        Assert.Equal(existing, loaded.Recents[0]);
     }
 }

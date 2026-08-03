@@ -42,9 +42,48 @@ public sealed class MpvPlayer : IDisposable
     private static extern int mpv_command(IntPtr ctx, IntPtr[] args);
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int mpv_observe_property(IntPtr ctx, ulong replyUserdata,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int format);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr mpv_wait_event(IntPtr ctx, double timeout);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     private static extern void mpv_terminate_destroy(IntPtr ctx);
 
+    // Constantes stables de client.h (cf. mpv/mpv.def) — seuls les slots utilisés sont déclarés.
+    private const int MpvEventShutdown = 1;
+    private const int MpvEventFileLoaded = 8;
+    private const int MpvEventPropertyChange = 22;
+    private const int MpvFormatString = 1;
+
+    private const ulong PlaybackErrorUdata = 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MpvEvent
+    {
+        public int EventId;
+        public int Error;
+        public ulong ReplyUserdata;
+        public IntPtr Data;
+        public ulong Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MpvEventProperty
+    {
+        public IntPtr Name;
+        public int Format;
+        public IntPtr Data;
+    }
+
     private IntPtr _ctx;
+    private Thread? _eventThread;
+
+    /// <summary>Émis (thread des événements mpv) quand la lecture d'un fichier échoue — mpv ne signale
+    /// jamais ça via le code retour de loadfile (le chargement est asynchrone). Consommé par
+    /// PlayerManager → AppService → Snackbar.</summary>
+    public event Action<string>? PlaybackError;
 
     public MpvPlayer(IntPtr parentHwnd)
     {
@@ -64,11 +103,51 @@ public sealed class MpvPlayer : IDisposable
 
         if (mpv_initialize(_ctx) < 0)
             throw new InvalidOperationException("mpv_initialize a échoué");
+
+        // Best-effort : si le build mpv ignore la propriété playback-error (mpv < 0.35),
+        // aucun événement n'arrivera et on retombe sur le comportement silencieux d'avant.
+        mpv_observe_property(_ctx, PlaybackErrorUdata, "playback-error", MpvFormatString);
+        _eventThread = new Thread(RunEventLoop) { IsBackground = true, Name = "mpv-events" };
+        _eventThread.Start();
+    }
+
+    /// <summary>Boucle d'événements : seule thread qui appelle mpv_wait_event (règle client.h).
+    /// Repère l'échec de chargement via la propriété playback-error — le seul signal fiable
+    /// (loadfile retourne 0 même quand le décodage échoue ensuite).</summary>
+    private void RunEventLoop()
+    {
+        var ctx = _ctx;
+        while (true)
+        {
+            var evPtr = mpv_wait_event(ctx, -1.0);
+            if (evPtr == IntPtr.Zero) continue;
+
+            var ev = Marshal.PtrToStructure<MpvEvent>(evPtr);
+            if (ev.EventId == MpvEventShutdown) return;
+            if (ev.EventId == MpvEventPropertyChange && ev.ReplyUserdata == PlaybackErrorUdata)
+                ReadPlaybackError(ev.Data);
+            // MpvEventFileLoaded : la propriété playback-error est remise à vide par mpv lui-même,
+            // aucun nettoyage à faire de notre côté.
+        }
+    }
+
+    private void ReadPlaybackError(IntPtr propertyPtr)
+    {
+        var prop = Marshal.PtrToStructure<MpvEventProperty>(propertyPtr);
+        if (prop.Format != MpvFormatString || prop.Data == IntPtr.Zero) return;
+        var message = Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(prop.Data));
+        if (!string.IsNullOrEmpty(message))
+            PlaybackError?.Invoke(message);
     }
 
     private void SetOption(string name, string value) => mpv_set_option_string(_ctx, name, value);
 
-    public void Load(string path) => Command("loadfile", path);
+    public void Load(string path)
+    {
+        var code = Command("loadfile", path);
+        if (code < 0)
+            PlaybackError?.Invoke($"mpv refuse de charger {path} (erreur {code})");
+    }
 
     public void Pause() => mpv_set_property_string(_ctx, "pause", "yes");
 
@@ -108,7 +187,7 @@ public sealed class MpvPlayer : IDisposable
         mpv_set_property_string(_ctx, "speed",
             Math.Clamp(speed, 0.25, 4.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
 
-    private void Command(params string[] args)
+    private int Command(params string[] args)
     {
         // mpv_command attend un char*[] UTF-8 terminé par NULL.
         var ptrs = new IntPtr[args.Length + 1];
@@ -116,7 +195,7 @@ public sealed class MpvPlayer : IDisposable
         {
             for (var i = 0; i < args.Length; i++)
                 ptrs[i] = Marshal.StringToCoTaskMemUTF8(args[i]);
-            mpv_command(_ctx, ptrs);
+            return mpv_command(_ctx, ptrs);
         }
         finally
         {
@@ -129,8 +208,11 @@ public sealed class MpvPlayer : IDisposable
     {
         if (_ctx != IntPtr.Zero)
         {
+            // Le SHUTDOWN émis par mpv_terminate_destroy réveille la boucle d'événements qui
+            // se termine ; on attend brièvement qu'elle rende la main avant de rendre la mémoire.
             mpv_terminate_destroy(_ctx);
             _ctx = IntPtr.Zero;
+            _eventThread?.Join(TimeSpan.FromSeconds(2));
         }
     }
 }

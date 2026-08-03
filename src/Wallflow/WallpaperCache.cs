@@ -63,6 +63,8 @@ public static class WallpaperCache
                 proc.WaitForExit();
                 if (proc.ExitCode != 0 || !File.Exists(tmp) || new FileInfo(tmp).Length == 0)
                 {
+                    if (proc.ExitCode != 0)
+                        Log.Warn($"Conversion échouée ({proc.ExitCode}) : {path}");
                     if (File.Exists(tmp)) File.Delete(tmp);
                     return;
                 }
@@ -72,9 +74,10 @@ public static class WallpaperCache
                 else File.Delete(tmp);
                 onConverted(final);
             }
-            catch
+            catch (Exception ex)
             {
-                // ponytail: échec silencieux voulu — l'original joue, pas de cache, on réessaiera au prochain Apply
+                // ponytail: échec voulu du cache — l'original joue, pas de cache, on réessaiera au prochain Apply
+                Log.Warn($"Conversion en cache échouée pour {path} ({ex.Message})");
             }
         });
     }

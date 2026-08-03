@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows.Forms;
 using Microsoft.Win32;
 
 namespace Wallflow;
@@ -14,8 +15,18 @@ public sealed class AppService
 
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
+    /// <summary>Clé de déduplication de la grille des Récents : changée si et seulement si la liste
+    /// des récents ou le wallpaper actif bouge. Les chemins NTFS ne peuvent pas contenir \n ni \0,
+    /// donc aucune collision entre états différents.</summary>
+    public static string GridKey(IReadOnlyList<string> recents, string? activeWallpaper) =>
+        string.Join("\n", recents) + "\0" + activeWallpaper;
+
     public Settings Settings { get; }
     public event Action? StateChanged;
+
+    /// <summary>Forwardé depuis les players (échec de lecture mpv) ; le consommateur (fenêtre)
+    /// le marshale vers le thread UI — ici l'événement arrive sur la thread d'événements mpv.</summary>
+    public event Action<string>? PlaybackError;
 
     private readonly IPlayerManager _players;
     private bool _manualPause;
@@ -26,6 +37,7 @@ public sealed class AppService
     public AppService(IPlayerManager playerManager)
     {
         _players = playerManager;
+        _players.PlaybackError += message => PlaybackError?.Invoke(message);
         Settings = Settings.Load();
         WriteRunKey();
         WallpaperHost.Init();
@@ -36,13 +48,26 @@ public sealed class AppService
             _autoPause = shouldPause && Settings.AutoPauseEnabled;
             ApplyPauseState();
         };
-        SystemEvents.DisplaySettingsChanged += (_, _) => _players.Rebuild();
+
+        // Ces événements système arrivent sur des threads système ; PlayerManager n'est pas
+        // thread-safe → tout est marshallé vers le thread UI avant de toucher aux players.
+        SystemEvents.DisplaySettingsChanged += (_, _) => OnUiThread(_players.Rebuild);
+        SystemEvents.PowerModeChanged += (_, e) =>
+        {
+            // Après une veille, mpv peut rester figé : on force un reload du wallpaper courant
+            // (replay + réapplication des réglages/pause), signature d'écrans ignorée.
+            if (e.Mode == PowerModes.Resume)
+                OnUiThread(_players.Resync);
+        };
 
         // Mémorise les settings dans le manager avant le premier Load, pour qu'il
         // les applique aux players qu'il créera (sinon défauts mpv : muet, 1x, cover).
         _players.ApplySettings(Settings);
         if (Settings.LastWallpaper is { } last && File.Exists(last))
+        {
+            Log.Info($"Restauration du dernier wallpaper au démarrage : {last}");
             Apply(last);
+        }
     }
 
     public bool ManualPause
@@ -66,6 +91,7 @@ public sealed class AppService
     {
         if (!File.Exists(path) || !SupportedExtensions.Contains(Path.GetExtension(path).ToLowerInvariant()))
             return false;
+        Log.Info($"Apply : {path}");
 
         // Transition « aucun Wallpaper actif → actif » : coupe le diaporama Windows et garde sa
         // config. Un simple changement d'image (Wallpaper déjà actif) ne redéclenche pas de capture.
@@ -130,9 +156,9 @@ public sealed class AppService
         StateChanged?.Invoke();
     }
 
-    public void ApplyPlaybackSettings()
+    public void ApplyPlaybackSettings(bool save = true)
     {
-        Settings.Save();
+        if (save) Settings.Save();
         _players.ApplySettings(Settings);
         StateChanged?.Invoke();
     }
@@ -141,6 +167,16 @@ public sealed class AppService
     {
         if (_manualPause || _autoPause) _players.PauseAll();
         else _players.ResumeAll();
+    }
+
+    /// <summary>Marshale vers le thread UI (les événements SystemEvents arrivent sur des threads
+    /// système). Sans Application (tests, shutdown) : no-op sûr.</summary>
+    private void OnUiThread(Action action)
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null) return;
+        try { app.Dispatcher.Invoke(action); }
+        catch (InvalidOperationException) { /* Dispatcher arrêté pendant le shutdown */ }
     }
 
     /// <summary>Coupe l'écriture de la clé Run. Isolation des tests uniquement — sans ça,
