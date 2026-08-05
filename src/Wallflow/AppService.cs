@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -14,6 +15,7 @@ public sealed class AppService
         [".gif", ".webp", ".mp4", ".webm", ".mkv", ".png", ".jpg", ".jpeg", ".bmp"];
 
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string WakeTaskName = "Wallflow_WakeRelaunch";
 
     /// <summary>Clé de déduplication de la grille des Récents : changée si et seulement si la liste
     /// des récents ou le wallpaper actif bouge. Les chemins NTFS ne peuvent pas contenir \n ni \0,
@@ -198,11 +200,45 @@ public sealed class AppService
     private void WriteRunKey()
     {
         if (SkipRunKey) return;
-        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
-        if (Settings.AutoStart && Environment.ProcessPath is { } exe)
-            key.SetValue("Wallflow", $"\"{exe}\" --tray");
-        else
-            key.DeleteValue("Wallflow", throwOnMissingValue: false);
+        var exe = Environment.ProcessPath;
+        using (var key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+        {
+            if (Settings.AutoStart && exe is { } path)
+                key.SetValue("Wallflow", $"\"{path}\" --tray");
+            else
+                key.DeleteValue("Wallflow", throwOnMissingValue: false);
+        }
+        WriteWakeTask(exe);
+    }
+
+    /// <summary>Construit la commande schtasks (create/delete) pour la tâche de relance au réveil.
+    /// La clé Run ne se rejoue qu'à l'ouverture de session : si Windows a tué le process pendant une
+    /// veille prolongée, rien ne le relance sans ce déclencheur — d'où l'event Power-Troubleshooter
+    /// EventID 1 (sortie de veille/veille prolongée), au lieu du seul /sc onlogon.</summary>
+    public static string BuildWakeTaskArgs(string exePath, bool enabled) =>
+        enabled
+            // --wake-relaunch (voir App.OnStartup) : si une instance tourne déjà, sortir sans
+            // réveiller la fenêtre — sinon chaque sortie de veille rouvrirait l'UI sans raison.
+            ? $"/create /tn {WakeTaskName} /tr \"\\\"{exePath}\\\" --tray --wake-relaunch\" /sc onevent /ec System " +
+              "/mo \"*[System[Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1]]\" /f"
+            : $"/delete /tn {WakeTaskName} /f";
+
+    /// <summary>Enregistre/retire la tâche planifiée. Best-effort : schtasks absent ou en échec ne
+    /// doit pas empêcher le démarrage de l'app (même logique de tolérance que ActivityMonitor.Poll).</summary>
+    private void WriteWakeTask(string? exe)
+    {
+        var enabled = Settings.AutoStart && exe is not null;
+        try
+        {
+            var psi = new ProcessStartInfo("schtasks", BuildWakeTaskArgs(exe ?? "", enabled))
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var proc = Process.Start(psi);
+            proc?.WaitForExit();
+        }
+        catch (Exception ex) { Log.Warn($"schtasks (tâche de réveil) a échoué : {ex.Message}"); }
     }
 
     public void Shutdown()

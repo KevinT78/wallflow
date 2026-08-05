@@ -325,6 +325,32 @@ public class AppServiceTests
         Assert.Equal(AppService.GridKey(["a", "b"], "a"), AppService.GridKey(["a", "b"], "a"));
     }
 
+    [Fact]
+    public void BuildWakeTaskArgs_Enabled_CreatesTaskOnResumeFromHibernation()
+    {
+        var args = AppService.BuildWakeTaskArgs(@"C:\Wallflow\wallflow.exe", enabled: true);
+
+        Assert.Contains("/create", args);
+        Assert.Contains("Wallflow_WakeRelaunch", args);
+        Assert.Contains(@"C:\Wallflow\wallflow.exe", args);
+        Assert.Contains("--tray", args);
+        // --wake-relaunch : App.OnStartup ne réveille pas la fenêtre d'une instance déjà active
+        // pour ce lancement précis (sinon chaque sortie de veille rouvrirait l'UI sans raison).
+        Assert.Contains("--wake-relaunch", args);
+        // Power-Troubleshooter EventID 1 = système sorti de veille/veille prolongée (System log).
+        Assert.Contains("Microsoft-Windows-Power-Troubleshooter", args);
+        Assert.Contains("EventID=1", args);
+    }
+
+    [Fact]
+    public void BuildWakeTaskArgs_Disabled_DeletesTask()
+    {
+        var args = AppService.BuildWakeTaskArgs(@"C:\Wallflow\wallflow.exe", enabled: false);
+
+        Assert.Contains("/delete", args);
+        Assert.Contains("Wallflow_WakeRelaunch", args);
+    }
+
     private sealed class FakePlayerManager : IPlayerManager
     {
         public Settings? LastApplied { get; private set; }

@@ -17,8 +17,12 @@ public partial class App : Application
         _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, "Wallflow_Show");
         if (!isFirst)
         {
-            // Une instance tourne déjà : on lui demande de montrer sa fenêtre et on quitte.
-            _showSignal.Set();
+            // Une instance tourne déjà : on lui demande de montrer sa fenêtre et on quitte — sauf si
+            // ce lancement vient de la tâche planifiée de relance au réveil (AppService.BuildWakeTaskArgs),
+            // qui doit être silencieuse quand l'app tournait déjà (sinon la fenêtre s'ouvrirait à chaque
+            // sortie de veille, y compris quand tout allait bien).
+            if (!e.Args.Contains("--wake-relaunch"))
+                _showSignal.Set();
             Shutdown();
             return;
         }
