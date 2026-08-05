@@ -32,6 +32,13 @@ public sealed class AppService
     private bool _manualPause;
     private bool _autoPause;
 
+    /// <summary>Vrai dès que les players affichent un Wallpaper dans ce process. Détection runtime de
+    /// la transition « aucun Wallpaper actif → actif » — le persisté Settings.LastWallpaper ne l'est
+    /// pas : au démarrage, la restauration retrouve un LastWallpaper déjà non-null alors qu'aucun
+    /// Wallpaper n'est encore affiché (sinon le diaporama, relancé par le Shutdown précédent, ne
+    /// serait jamais recoupé).</summary>
+    private bool _wallpaperActive;
+
     public AppService() : this(new PlayerManager()) { }
 
     public AppService(IPlayerManager playerManager)
@@ -95,7 +102,8 @@ public sealed class AppService
 
         // Transition « aucun Wallpaper actif → actif » : coupe le diaporama Windows et garde sa
         // config. Un simple changement d'image (Wallpaper déjà actif) ne redéclenche pas de capture.
-        if (Settings.LastWallpaper is null)
+        // Détection par état runtime, pas par Settings.LastWallpaper persisté (voir _wallpaperActive).
+        if (!_wallpaperActive)
             Settings.SlideshowSnapshot = _players.PauseSlideshowIfActive();
 
         // Joue la version convertie si elle existe déjà ; sinon l'original tout de suite,
@@ -117,6 +125,7 @@ public sealed class AppService
         if (Settings.Recents.Count > 10)
             Settings.Recents.RemoveRange(10, Settings.Recents.Count - 10);
         Settings.Save();
+        _wallpaperActive = true;
         StateChanged?.Invoke();
         return true;
     }
@@ -126,6 +135,7 @@ public sealed class AppService
     {
         ResumeCapturedSlideshow();
         Settings.LastWallpaper = null;
+        _wallpaperActive = false;
         _players.Clear();
         Settings.Save();
         StateChanged?.Invoke();
@@ -198,6 +208,7 @@ public sealed class AppService
     public void Shutdown()
     {
         ResumeCapturedSlideshow();
+        _wallpaperActive = false;
         _players.Dispose();
     }
 }

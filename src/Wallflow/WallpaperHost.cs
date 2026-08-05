@@ -68,13 +68,26 @@ public static class WallpaperHost
     /// <summary>Crée une fenêtre enfant du WorkerW couvrant l'écran donné. Coordonnées relatives à l'écran virtuel.</summary>
     public static IntPtr CreateHostFor(Screen screen)
     {
-        var vs = SystemInformation.VirtualScreen;
-        var b = screen.Bounds;
-        var hwnd = CreateWindowEx(0, "Static", null, WS_CHILD | WS_VISIBLE,
-            b.X - vs.X, b.Y - vs.Y, b.Width, b.Height, _workerW, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        var hwnd = TryCreateHost(screen);
+        // Le shell peut recréer le WorkerW (ex. coupe du diaporama via IDesktopWallpaper) : le handle
+        // capturé par Init() est alors périmé et CreateWindowEx échoue (Win32 1400). On re-localise le
+        // WorkerW courant puis on retente une fois avant d'abandonner.
+        if (hwnd == IntPtr.Zero)
+        {
+            Init();
+            hwnd = TryCreateHost(screen);
+        }
         if (hwnd == IntPtr.Zero)
             throw new InvalidOperationException($"CreateWindowEx a échoué (Win32 {Marshal.GetLastWin32Error()})");
         return hwnd;
+    }
+
+    private static IntPtr TryCreateHost(Screen screen)
+    {
+        var vs = SystemInformation.VirtualScreen;
+        var b = screen.Bounds;
+        return CreateWindowEx(0, "Static", null, WS_CHILD | WS_VISIBLE,
+            b.X - vs.X, b.Y - vs.Y, b.Width, b.Height, _workerW, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
     }
 
     public static void DestroyHost(IntPtr hwnd)

@@ -157,6 +157,40 @@ public class AppServiceTests
     }
 
     [Fact]
+    public void Constructor_RestoringLastWallpaper_CapturesSlideshow()
+    {
+        // Bug de restauration : au démarrage, Settings.LastWallpaper est déjà non-null (persisté)
+        // alors qu'aucun Wallpaper n'est encore affiché. La transition aucun→actif doit quand même
+        // couper le diaporama — sinon le Shutdown précédent l'a relancé et il repique le wallpaper.
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var file = iso.CreateTempMedia(".gif");
+        new Settings { LastWallpaper = file }.Save(); // settings.json persisté simulant une session passée
+
+        _ = new AppService(pm); // le ctor restaure file → transition aucun→actif
+
+        Assert.Equal(1, pm.PauseSlideshowCalls);
+        Assert.Equal(Snap, Settings.Load().SlideshowSnapshot); // capture persistée, restauration possible
+    }
+
+    [Fact]
+    public void Constructor_RestoringLastWallpaper_ThenRemove_RestoresSlideshow()
+    {
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var file = iso.CreateTempMedia(".gif");
+        new Settings { LastWallpaper = file }.Save();
+
+        var svc = new AppService(pm);
+        Assert.Equal(1, pm.PauseSlideshowCalls); // capture à la restauration
+
+        svc.RemoveWallpaper();
+
+        Assert.Equal(1, pm.ResumeSlideshowCalls); // et restauration symétrique au retrait
+        Assert.Equal(Snap, pm.LastResumed);
+    }
+
+    [Fact]
     public void Apply_ImageChangeWhileActive_DoesNotRecapture()
     {
         using var iso = new TestIsolation();
