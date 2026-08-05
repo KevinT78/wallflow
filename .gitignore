@@ -494,4 +494,5 @@ tools/*
 !tools/measure-baseline.ps1
 !tools/baseline-results.csv
 !tools/package.ps1
+!tools/setup-binaries.sh
 .claude
