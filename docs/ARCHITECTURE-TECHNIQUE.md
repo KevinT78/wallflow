@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `4ec958b` (2026-07-19)._
-<!-- doc-provenance: commit=4ec958b generated=2026-07-19 -->
+> _Généré au commit `10aab01` (2026-08-05)._
+<!-- doc-provenance: commit=10aab01 generated=2026-08-05 -->
 
 ## Stack
 
@@ -55,6 +55,7 @@ classDiagram
         Settings settings
         bool manualPause
         bool autoPause
+        bool wallpaperActive
         string? ActiveWallpaper
         +event Action<string>? PlaybackError
         Apply(path)
@@ -183,7 +184,7 @@ flowchart TD
     A["Drop / tuile + / clic récent / boot"] --> B["AppService.Apply(path)"]
     B --> C{"Fichier existe et<br/>extension supportée ?"}
     C -->|non| D["Snackbar d'erreur, état inchangé"]
-    C -->|oui| T{"LastWallpaper == null ?<br/>(transition aucun→actif)"}
+    C -->|oui| T{"_wallpaperActive == false ?<br/>(transition aucun→actif, détection runtime)"}
     T -->|oui| S["PauseSlideshowIfActive()<br/>coupe le diaporama Windows, capture en mémoire"]
     T -->|non| E
     S --> E["PlayerManager.Load<br/>(version cache si déjà convertie, sinon l'original)"]
@@ -251,13 +252,29 @@ Deux ajouts au cœur, confinés à `AppService`, sans nouvel état :
 Le menu contextuel des vignettes (`MainWindow.BuildRecentMenu`) expose « Retirer des récents » et
 « Ouvrir l'emplacement du fichier » (`explorer /select`) ; la tuile « + » n'a pas de menu.
 
-### Démarrage (clé `Run`)
+### Démarrage (clé `Run` + tâche planifiée de réveil)
 
 1. Windows lance `wallflow.exe` (clé `HKCU\...\Run`, écrite par l'app elle-même).
-2. Mutex nommé single-instance : une deuxième instance active la fenêtre de la première et quitte.
+2. Mutex nommé single-instance : une deuxième instance active la fenêtre de la première et quitte —
+   sauf si l'argument `--wake-relaunch` est présent (point 5), auquel cas elle quitte silencieusement
+   sans réveiller la fenêtre.
 3. L'app **réécrit sa clé `Run` avec son chemin courant à chaque lancement** — c'est ce qui rend le
    zip portable déplaçable sans casser l'auto-start (décision DESIGN.md).
 4. Démarrage dans le tray, sans fenêtre ; si `lastWallpaper` existe encore sur disque → `Apply`.
+5. **Tâche planifiée de réveil** (`AppService.BuildWakeTaskArgs` / `WriteWakeTask`, appelée par
+   `WriteRunKey` à chaque lancement) : la clé `Run` ne se rejoue qu'à l'ouverture de session — si
+   Windows a tué le process pendant une veille prolongée, rien ne le relance avant le prochain
+   login. Une tâche `schtasks` comble ce trou :
+
+   | Tâche planifiée | Déclencheur | Action | Portée |
+   |---|---|---|---|
+   | `Wallflow_WakeRelaunch` | Event log `System`, `Microsoft-Windows-Power-Troubleshooter` EventID=1 (sortie de veille / veille prolongée) | `wallflow.exe --tray --wake-relaunch` | créée/retirée avec `Settings.AutoStart` (même toggle que la clé `Run`) ; utilisateur courant, sans élévation |
+
+   Best-effort (même tolérance que `ActivityMonitor.Poll`) : un échec de `schtasks` (absent, droits)
+   est simplement loggé (`Log.Warn`), jamais bloquant pour le démarrage. Grâce au mutex
+   single-instance, si l'app tournait déjà au réveil, ce lancement automatique se contente de
+   sortir (`--wake-relaunch` court-circuite le réveil de fenêtre du point 2) — seul le cas où le
+   process avait réellement disparu aboutit à un vrai relancement.
 
 ### Appliquer un réglage de lecture
 
@@ -321,6 +338,11 @@ l'option mpv `wid` (mpv rend directement dedans — pas de render API, pas d'Ope
 > ⚠️ Technique non documentée par Microsoft : peut casser sur une mise à jour de Windows.
 > Référence d'implémentation : le code source de Lively Wallpaper.
 
+Le shell peut recréer le WorkerW en cours de session (ex. coupe/reprise du diaporama via
+`IDesktopWallpaper`) : le HWND capturé par `Init()` devient alors périmé et `CreateWindowEx` échoue
+(Win32 1400). `WallpaperHost.CreateHostFor` retente une fois — `Init()` puis nouvelle tentative
+(`TryCreateHost`) — avant d'abandonner et de lever l'exception.
+
 Options mpv posées au constructeur (défauts sûrs, écrasés ensuite par `ApplySettings`) :
 `loop-file=inf`, `mute=yes`, `panscan=1.0` (cover), `hwdec=auto`. Deux subtilités relevées en
 code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se pilote via
@@ -354,12 +376,16 @@ Deux couches, séparation nette :
   - `ResumeSlideshow(snapshot)` : `SHCreateItemFromParsingName` + `SHCreateShellItemArrayFromShellItem`
     → `SetSlideshow` + `SetSlideshowOptions` + `Enable(true)`.
 - **Orchestration** dans `AppService` (testable via le seam `IPlayerManager`) : capture à la
-  **transition `LastWallpaper == null` → actif** uniquement (un changement d'image d'un `Wallpaper`
-  déjà actif ne recapture pas ; `Rebuild` non plus). `RemoveWallpaper()` et `Shutdown()` appellent
-  `ResumeCapturedSlideshow()` (restaure puis oublie). Le snapshot vit dans
-  `Settings.SlideshowSnapshot`, **persisté dans settings.json** (issue 008, commit `3dbc384`) : après
-  un crash, il survit et le diaporama est restauré au prochain `Retirer le fond d'écran` ou
-  `Quitter` — plus de config de diaporama perdue.
+  **transition détectée par un drapeau runtime `_wallpaperActive`** (un changement d'image d'un
+  `Wallpaper` déjà actif ne recapture pas ; `Rebuild` non plus). Le drapeau vit en mémoire, jamais
+  persisté — contrairement à `Settings.LastWallpaper`, qui reste non-null après un crash/relance :
+  détecter la transition sur `LastWallpaper == null` aurait manqué la recapture au démarrage (la
+  restauration retrouve un `LastWallpaper` déjà renseigné alors qu'aucun `Wallpaper` n'est encore
+  affiché dans ce process — sinon le diaporama, relancé par le `Shutdown` précédent, n'était jamais
+  recoupé). `RemoveWallpaper()` et `Shutdown()` appellent `ResumeCapturedSlideshow()` (restaure puis
+  oublie). Le snapshot vit dans `Settings.SlideshowSnapshot`, **persisté dans settings.json**
+  (issue 008, commit `3dbc384`) : après un crash, il survit et le diaporama est restauré au prochain
+  `Retirer le fond d'écran` ou `Quitter` — plus de config de diaporama perdue.
 
 > ⚠️ **Écarts réel vs intention (vérifiés live, Win10 19045)** — le PRD prévoyait de couper via
 > l'effet de bord de `SetWallpaper(image courante)` et de détecter via `GetStatus() == DSS_ENABLED`.

@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `4ec958b` (2026-07-19)._
-<!-- doc-provenance: commit=4ec958b generated=2026-07-19 -->
+> _Généré au commit `10aab01` (2026-08-05)._
+<!-- doc-provenance: commit=10aab01 generated=2026-08-05 -->
 
 ## En une phrase
 
@@ -55,6 +55,7 @@ mindmap
     ⚙️ Réglages
       Démarrage avec Windows
       Restauration au démarrage
+      Se relance tout seul si l'app a disparu pendant une veille prolongée
 ```
 
 ## Le parcours type
@@ -72,6 +73,7 @@ flowchart TD
     F -->|la condition disparaît| C
     E -->|non| C
     D -.->|redémarrage de Windows| G[Wallflow se relance et restaure le wallpaper]
+    D -.->|sortie de veille prolongée, si l'app avait disparu| G
     G --> C
 ```
 
@@ -86,7 +88,8 @@ flowchart TD
 4. Quand un jeu ou une vidéo passe en plein écran, que le portable passe sur batterie, ou que le
    mode Économie d'énergie s'active, l'animation se met en pause toute seule — zéro impact sur les
    performances ou l'autonomie.
-5. Au redémarrage de Windows, le wallpaper revient sans aucune action.
+5. Au redémarrage de Windows, le wallpaper revient sans aucune action ; même chose si l'application
+   avait disparu pendant une longue mise en veille prolongée — elle se relance toute seule au réveil.
 6. À tout moment, **Retirer le fond d'écran** (depuis la fenêtre ou la zone de notification) rend le
    bureau Windows d'origine tout en gardant l'application prête à ré-appliquer ; **Quitter** ferme
    l'application en restaurant lui aussi le fond — jamais de bureau blanc.
