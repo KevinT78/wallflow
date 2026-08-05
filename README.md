@@ -11,10 +11,10 @@ icônes du bureau, sur tous les écrans, avec pause automatique en plein écran 
 Deux binaires natifs sont **exclus du dépôt** (trop lourds pour git) et doivent être posés dans
 `lib/` avant de builder :
 
-| Fichier | Rôle | Contrainte |
-|---------|------|-----------|
-| `lib/libmpv-2.dll` | lecteur qui rend le wallpaper | build shinchiro (`mpv-dev-x86_64-*.7z`) |
-| `lib/ffmpeg.exe` | conversion GIF/WebP animé → mp4 du cache | **≥ 7.1** (décodage WebP animé) |
+| Fichier | Rôle | Où le prendre |
+|---------|------|---------------|
+| `lib/libmpv-2.dll` | lecteur qui rend le wallpaper | [shinchiro](https://github.com/shinchiro/mpv-winbuild-cmake/releases/latest) — asset `mpv-dev-x86_64-*.7z` |
+| `lib/ffmpeg.exe` | conversion GIF/WebP animé → mp4 du cache | [BtbN](https://github.com/BtbN/FFmpeg-Builds/releases/latest) — asset `ffmpeg-n*-win64-gpl-*.zip`, **≥ 7.1** |
 
 Un wizard interactif fait la procédure avec toi — il ouvre les pages de téléchargement, dit quel
 fichier prendre, copie les binaires dans `lib/` et contrôle la version de ffmpeg :

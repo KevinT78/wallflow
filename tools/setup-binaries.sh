@@ -323,7 +323,7 @@ else
   warn "dotnet introuvable dans le PATH — installe le .NET SDK avant de builder."
   SKIPPED+=(".NET SDK (https://dotnet.microsoft.com/download)")
 fi
-note "Il te faudra aussi de quoi ouvrir des .7z (7-Zip : https://www.7-zip.org)."
+note "Il te faudra de quoi ouvrir un .7z pour libmpv (7-Zip : https://www.7-zip.org)."
 pause "Prêt ?"
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
@@ -345,10 +345,14 @@ stage "ffmpeg.exe" 2
 say "ffmpeg ≥ 7.1 requis : c'est la version qui décode le WebP animé."
 note "Un ffmpeg déjà présent dans le PATH suffit à l'app (WallpaperCache le"
 note "cherche aussi là), mais le poser dans lib/ garantit la bonne version."
-open_url "https://www.gyan.dev/ffmpeg/builds/"
-step "Section 'release builds' → télécharge ffmpeg-release-full.7z"
-step "Extrais l'archive, puis ouvre le sous-dossier bin/."
-step "Le binaire à récupérer est bin/ffmpeg.exe (et lui seul)."
+open_url "https://github.com/BtbN/FFmpeg-Builds/releases/latest"
+step "Dans les Assets, prends une build win64 numérotée en ≥ 7.1, p. ex."
+note "    ffmpeg-n8.1-latest-win64-gpl-8.1.zip"
+note "  (évite 'master-latest' : version non numérotée, plus dure à vérifier)"
+step "Extrais le .zip (Windows le fait nativement, pas besoin de 7-Zip)."
+step "Le binaire est dans bin/ : bin/ffmpeg.exe, et lui seul."
+note "Alternative : gyan.dev/ffmpeg/builds — mais certains FAI détournent ce"
+note "domaine en DNS, ce qui provoque une erreur de certificat dans le navigateur."
 say ""
 if collect_binary "ffmpeg.exe" "$LIB_DIR/ffmpeg.exe"; then
   FFMPEG_V=$(ffmpeg_version "$LIB_DIR/ffmpeg.exe" || true)
@@ -360,7 +364,7 @@ if collect_binary "ffmpeg.exe" "$LIB_DIR/ffmpeg.exe"; then
     printf '  %s✓ ffmpeg %s%s (≥ 7.1)\n' "$GREEN" "$FFMPEG_V" "$RESET"
   else
     warn "ffmpeg $FFMPEG_V < 7.1 — le WebP animé ne sera pas décodé."
-    note "Reprends un build 'release full' plus récent sur gyan.dev."
+    note "Reprends un asset win64 numéroté ≥ 7.1 dans la release BtbN."
     SKIPPED+=("remplacer lib/ffmpeg.exe par une version ≥ 7.1 (actuelle : $FFMPEG_V)")
   fi
 fi
