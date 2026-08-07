@@ -353,9 +353,13 @@ vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait
 arrière-plan) pour observer la propriété `playback-error`. `Load` vérifie le code retour de
 `loadfile` ; une erreur remonte `PlaybackError` → `PlayerManager` (agrégé) → `AppService` →
 `MainWindow` (Snackbar via `Dispatcher.BeginInvoke`) — un fichier corrompu ou injouable est donc
-visible par l'Utilisateur au lieu d'un écran figé silencieux. `Dispose` attend le thread
-d'événements (join 2 s) après `mpv_terminate_destroy` : pas de libération de contexte pendant que
-mpv tourne encore.
+visible par l'Utilisateur au lieu d'un écran figé silencieux. `Dispose` envoie la commande
+`quit` **avant** `mpv_terminate_destroy`, pour laisser la boucle d'événements recevoir `SHUTDOWN`
+et sortir d'elle-même en premier (`join` réussit alors immédiatement) : appeler
+`mpv_terminate_destroy` (qui libère le contexte en interne) pendant que ce thread lit encore le
+même contexte est une race UB documentée côté mpv — elle empêchait `SHUTDOWN` d'être vu
+proprement, faisait systématiquement expirer le `join(2 s)` et laissait un thread orphelin à
+chaque Resync/relance (fond blanc de plusieurs secondes à la reprise d'une vidéo).
 
 ## Anti-flicker : coupure du diaporama Windows natif
 
