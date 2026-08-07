@@ -372,6 +372,7 @@ public class AppServiceTests
         public void ResumeAll() { }
         public void Rebuild() { }
         public void Resync() { }
+        public void ResyncLight() { }
         public void Clear() => Cleared = true;
         public void Dispose() { }
         public SlideshowSnapshot? PauseSlideshowIfActive() { PauseSlideshowCalls++; return SlideshowToReturn; }

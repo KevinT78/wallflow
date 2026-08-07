@@ -8,6 +8,7 @@ public interface IPlayerManager
     void ApplySettings(Settings settings);
     void Rebuild();
     void Resync();
+    void ResyncLight();
     void Clear();
     void Dispose();
 

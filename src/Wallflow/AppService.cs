@@ -64,9 +64,11 @@ public sealed class AppService
         SystemEvents.PowerModeChanged += (_, e) =>
         {
             // Après une veille, mpv peut rester figé : on force un reload du wallpaper courant
-            // (replay + réapplication des réglages/pause), signature d'écrans ignorée.
+            // (replay + réapplication des réglages/pause). ResyncLight garde le contexte mpv et
+            // le host Win32 vivants (évite ~400ms de recompilation shader gpu-next mesurés sur
+            // un Resync classique) — un vrai changement d'écrans passe par Rebuild/Resync.
             if (e.Mode == PowerModes.Resume)
-                OnUiThread(_players.Resync);
+                OnUiThread(_players.ResyncLight);
         };
 
         // Mémorise les settings dans le manager avant le premier Load, pour qu'il

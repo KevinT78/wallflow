@@ -62,6 +62,15 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
         if (_current != null) Load(_current);
     }
 
+    /// <summary>Reload léger (résume après veille courte) : garde le contexte mpv et le host Win32
+    /// vivants, recharge juste le fichier. Détruire/recréer le contexte à chaque résume coûte
+    /// ~400ms de recompilation de shaders gpu-next (mesuré) que ce chemin évite entièrement.
+    /// Réservé au résume système — un vrai changement d'écrans reste un `Resync()` classique.</summary>
+    public void ResyncLight()
+    {
+        if (_current != null) Load(_current);
+    }
+
     /// <summary>Retirer le fond d'écran : teardown des players + retour au bureau natif. L'app reste vivante.</summary>
     public void Clear()
     {
