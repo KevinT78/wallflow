@@ -208,11 +208,18 @@ public sealed class MpvPlayer : IDisposable
     {
         if (_ctx != IntPtr.Zero)
         {
-            // Le SHUTDOWN émis par mpv_terminate_destroy réveille la boucle d'événements qui
-            // se termine ; on attend brièvement qu'elle rende la main avant de rendre la mémoire.
-            mpv_terminate_destroy(_ctx);
+            var ctx = _ctx;
             _ctx = IntPtr.Zero;
+            // mpv_terminate_destroy libère ctx en interne (bloquant) ; l'appeler pendant que
+            // RunEventLoop lit encore ce même ctx via mpv_wait_event est une race UB documentée
+            // côté mpv (SHUTDOWN jamais vu proprement, thread orphelin, Join timeout à chaque
+            // fois). Pattern correct (doc mpv, client.h) : "quit" d'abord, laisser RunEventLoop
+            // recevoir SHUTDOWN et sortir naturellement, PUIS seulement terminate_destroy.
+            var quitPtr = Marshal.StringToCoTaskMemUTF8("quit");
+            mpv_command(ctx, [quitPtr, IntPtr.Zero]);
+            Marshal.FreeCoTaskMem(quitPtr);
             _eventThread?.Join(TimeSpan.FromSeconds(2));
+            mpv_terminate_destroy(ctx);
         }
     }
 }
