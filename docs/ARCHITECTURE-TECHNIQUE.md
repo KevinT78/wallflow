@@ -322,11 +322,13 @@ et les réglages de lecture. Brutal mais simple ; un changement d'écran est un 
 > elle a changé.
 
 La **reprise de veille** (`SystemEvents.PowerModeChanged` = `Resume`) ne re-enumère pas les écrans
-— mpv peut perdre son contexte D3D11 pendant l'arrêt du GPU : `IPlayerManager.Resync()` rejoue le
-wallpaper courant sur place (reload forcé, sans toucher à la garde `ScreenSig`). Les événements
-`SystemEvents` arrivent sur un thread de pool : `AppService` les marshale vers le `Dispatcher`
-(`OnUiThread`, no-op si aucune `Application`) avant de toucher aux players — pas de race sur le
-WorkerW entre un hook système et la boucle UI.
+et ne détruit plus le contexte mpv : `IPlayerManager.ResyncLight()` rejoue le wallpaper courant sur
+place en gardant le contexte mpv et le host Win32 vivants (simple `Load()`), sans passer par la
+garde `ScreenSig` ni par le teardown complet de `Resync()`. Un vrai changement d'écrans (nombre de
+`Entry`/HWND qui change) continue de passer par `Rebuild()` → `Resync()`, seul cas qui a besoin de
+détruire/recréer les hosts. Les événements `SystemEvents` arrivent sur un thread de pool :
+`AppService` les marshale vers le `Dispatcher` (`OnUiThread`, no-op si aucune `Application`) avant
+de toucher aux players — pas de race sur le WorkerW entre un hook système et la boucle UI.
 
 ## Intégration bureau (WorkerW)
 
@@ -359,7 +361,10 @@ et sortir d'elle-même en premier (`join` réussit alors immédiatement) : appel
 `mpv_terminate_destroy` (qui libère le contexte en interne) pendant que ce thread lit encore le
 même contexte est une race UB documentée côté mpv — elle empêchait `SHUTDOWN` d'être vu
 proprement, faisait systématiquement expirer le `join(2 s)` et laissait un thread orphelin à
-chaque Resync/relance (fond blanc de plusieurs secondes à la reprise d'une vidéo).
+chaque Resync/relance (fond blanc de plusieurs secondes à la reprise d'une vidéo). Un résidu
+~600-700ms subsistait après ce fix : la recompilation du pipeline de shaders `gpu-next` à chaque
+contexte mpv recréé (~400ms mesurés). `ResyncLight` (ci-dessus) l'évite sur le chemin resume en
+gardant le contexte vivant — fenêtre `loadfile`→première frame ramenée à ~290-337ms.
 
 ## Anti-flicker : coupure du diaporama Windows natif
 
