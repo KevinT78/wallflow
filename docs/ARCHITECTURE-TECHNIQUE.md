@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `10aab01` (2026-08-05)._
-<!-- doc-provenance: commit=10aab01 generated=2026-08-05 -->
+> _Généré au commit `f425552` (2026-08-07)._
+<!-- doc-provenance: commit=f425552 generated=2026-08-07 -->
 
 ## Stack
 
@@ -340,10 +340,14 @@ l'option mpv `wid` (mpv rend directement dedans — pas de render API, pas d'Ope
 > ⚠️ Technique non documentée par Microsoft : peut casser sur une mise à jour de Windows.
 > Référence d'implémentation : le code source de Lively Wallpaper.
 
-Le shell peut recréer le WorkerW en cours de session (ex. coupe/reprise du diaporama via
-`IDesktopWallpaper`) : le HWND capturé par `Init()` devient alors périmé et `CreateWindowEx` échoue
-(Win32 1400). `WallpaperHost.CreateHostFor` retente une fois — `Init()` puis nouvelle tentative
-(`TryCreateHost`) — avant d'abandonner et de lever l'exception.
+Le shell peut recréer le WorkerW en cours de session (coupe/reprise du diaporama via
+`IDesktopWallpaper`, ou `RestoreDesktop()` après un `Retirer le fond d'écran` — `SPI_SETDESKWALLPAPER`
+fait réémettre le WorkerW par Explorer) : le HWND capturé par `Init()` devient alors périmé. Piège
+constaté en usage réel : un handle périmé reste souvent un HWND *valide* auquel `CreateWindowEx`
+réussit quand même (la fenêtre existe encore, juste plus composée à l'écran) — pas d'erreur Win32 à
+détecter, donc `mpv` échoue ensuite silencieusement à s'attacher au host (`vo: unable to create
+window`), écran noir permanent. `WallpaperHost.CreateHostFor` relocalise donc le WorkerW (`Init()`)
+à **chaque** appel, plutôt que seulement en réaction à un échec explicite de `CreateWindowEx`.
 
 Options mpv posées au constructeur (défauts sûrs, écrasés ensuite par `ApplySettings`) :
 `loop-file=inf`, `mute=yes`, `panscan=1.0` (cover), `hwdec=auto`. Deux subtilités relevées en
@@ -352,7 +356,9 @@ code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se pilot
 vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait rejeté par mpv).
 
 `MpvPlayer` fait tourner une boucle d'événements mpv (`mpv_wait_event`, thread `mpv-events` en
-arrière-plan) pour observer la propriété `playback-error`. `Load` vérifie le code retour de
+arrière-plan) pour observer la propriété `playback-error` et, via `mpv_request_log_messages`, les
+messages internes `error`/`fatal` (ex. échec `vo` ci-dessus) — sinon totalement silencieux côté
+`mpv_wait_event`, relayés dans nos logs (`Log.Warn`). `Load` vérifie le code retour de
 `loadfile` ; une erreur remonte `PlaybackError` → `PlayerManager` (agrégé) → `AppService` →
 `MainWindow` (Snackbar via `Dispatcher.BeginInvoke`) — un fichier corrompu ou injouable est donc
 visible par l'Utilisateur au lieu d'un écran figé silencieux. `Dispose` envoie la commande
