@@ -44,7 +44,8 @@ public static class WallpaperHost
 
     private static IntPtr _workerW;
 
-    /// <summary>Provoque la création du WorkerW par le shell et le localise. À appeler une fois au démarrage.</summary>
+    /// <summary>Provoque la création du WorkerW par le shell et le localise. Appelé au démarrage et
+    /// avant chaque (re)création de host — le shell peut recréer le WorkerW en cours de vie de l'app.</summary>
     public static void Init()
     {
         var progman = FindWindow("Progman", null);
@@ -65,18 +66,17 @@ public static class WallpaperHost
             _workerW = progman;
     }
 
-    /// <summary>Crée une fenêtre enfant du WorkerW couvrant l'écran donné. Coordonnées relatives à l'écran virtuel.</summary>
+    /// <summary>Crée une fenêtre enfant du WorkerW couvrant l'écran donné. Coordonnées relatives à l'écran virtuel.
+    /// Re-localise le WorkerW à chaque appel : le shell peut le recréer (coupe du diaporama, ou
+    /// RestoreDesktop() après un Retirer le fond d'écran — SPI_SETDESKWALLPAPER fait réémettre le
+    /// WorkerW par Explorer), et un handle périmé reste souvent un HWND valide sur lequel
+    /// CreateWindowEx réussit quand même (la fenêtre existe encore, juste plus composée à l'écran) —
+    /// d'où un host "créé" sous lequel mpv échoue ensuite à s'attacher (vo: "unable to create
+    /// window"). Se fier au seul code retour de CreateWindowEx ne détecte donc pas ce cas.</summary>
     public static IntPtr CreateHostFor(Screen screen)
     {
+        Init();
         var hwnd = TryCreateHost(screen);
-        // Le shell peut recréer le WorkerW (ex. coupe du diaporama via IDesktopWallpaper) : le handle
-        // capturé par Init() est alors périmé et CreateWindowEx échoue (Win32 1400). On re-localise le
-        // WorkerW courant puis on retente une fois avant d'abandonner.
-        if (hwnd == IntPtr.Zero)
-        {
-            Init();
-            hwnd = TryCreateHost(screen);
-        }
         if (hwnd == IntPtr.Zero)
             throw new InvalidOperationException($"CreateWindowEx a échoué (Win32 {Marshal.GetLastWin32Error()})");
         return hwnd;

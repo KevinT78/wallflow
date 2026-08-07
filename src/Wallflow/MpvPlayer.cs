@@ -51,11 +51,23 @@ public sealed class MpvPlayer : IDisposable
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     private static extern void mpv_terminate_destroy(IntPtr ctx);
 
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int mpv_request_log_messages(IntPtr ctx, [MarshalAs(UnmanagedType.LPUTF8Str)] string level);
+
     // Constantes stables de client.h (cf. mpv/mpv.def) — seuls les slots utilisés sont déclarés.
     private const int MpvEventShutdown = 1;
-    private const int MpvEventFileLoaded = 8;
+    private const int MpvEventLogMessage = 2;
     private const int MpvEventPropertyChange = 22;
     private const int MpvFormatString = 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MpvEventLogMessageData
+    {
+        public IntPtr Prefix;
+        public IntPtr Level;
+        public IntPtr Text;
+        public int LogLevel;
+    }
 
     private const ulong PlaybackErrorUdata = 1;
 
@@ -107,6 +119,7 @@ public sealed class MpvPlayer : IDisposable
         // Best-effort : si le build mpv ignore la propriété playback-error (mpv < 0.35),
         // aucun événement n'arrivera et on retombe sur le comportement silencieux d'avant.
         mpv_observe_property(_ctx, PlaybackErrorUdata, "playback-error", MpvFormatString);
+        mpv_request_log_messages(_ctx, "warn");
         _eventThread = new Thread(RunEventLoop) { IsBackground = true, Name = "mpv-events" };
         _eventThread.Start();
     }
@@ -124,11 +137,24 @@ public sealed class MpvPlayer : IDisposable
 
             var ev = Marshal.PtrToStructure<MpvEvent>(evPtr);
             if (ev.EventId == MpvEventShutdown) return;
+            if (ev.EventId == MpvEventLogMessage) ReadLogMessage(ev.Data);
             if (ev.EventId == MpvEventPropertyChange && ev.ReplyUserdata == PlaybackErrorUdata)
                 ReadPlaybackError(ev.Data);
             // MpvEventFileLoaded : la propriété playback-error est remise à vide par mpv lui-même,
             // aucun nettoyage à faire de notre côté.
         }
+    }
+
+    /// <summary>Relaie les erreurs internes mpv (ex. échec vo/gpu à s'attacher au wid) dans nos logs —
+    /// sinon totalement silencieuses côté mpv_wait_event (voir mpv_request_log_messages ci-dessus).</summary>
+    private static void ReadLogMessage(IntPtr dataPtr)
+    {
+        var data = Marshal.PtrToStructure<MpvEventLogMessageData>(dataPtr);
+        var level = Marshal.PtrToStringUTF8(data.Level);
+        if (level != "error" && level != "fatal") return;
+        var prefix = Marshal.PtrToStringUTF8(data.Prefix);
+        var text = Marshal.PtrToStringUTF8(data.Text)?.TrimEnd('\n');
+        Log.Warn($"mpv [{prefix}] {text}");
     }
 
     private void ReadPlaybackError(IntPtr propertyPtr)
