@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `f425552` (2026-08-07)._
-<!-- doc-provenance: commit=f425552 generated=2026-08-07 -->
+> _Généré au commit `f897b4a` (2026-08-12, + arbre de travail modifié)._
+<!-- doc-provenance: commit=f897b4a generated=2026-08-12 -->
 
 ## Stack
 
@@ -14,8 +14,8 @@
 | Application | C# / .NET 8 WPF, TFM `net8.0-windows10.0.19041.0` (min. 17763), x64 | `src/Wallflow/` |
 | Lecture média | libmpv (`libmpv-2.dll`, build shinchiro, dans `lib/` hors git), embedding `wid` | `MpvPlayer.cs` |
 | Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost.cs`, `ActivityMonitor.cs` |
-| UI tray | H.NotifyIcon.Wpf 2.3.0 (icône via `Icon.ExtractAssociatedIcon`, efficiency mode off) | `App.xaml.cs` (`BuildTray`) |
-| Fenêtre | WPF-UI 4.3.0 : `FluentWindow` backdrop Mica + accent système, redimensionnable ; grille des `Récents` en héros, barre du bas à 3 contrôles (`Flyout` volume / réglages), `SnackbarPresenter` pour les erreurs, icônes `SymbolIcon` (Segoe Fluent) | `MainWindow.xaml(.cs)` |
+| UI tray | H.NotifyIcon.Wpf 2.3.0 : icône lecture/pause dessinée en mémoire (GDI+, base `Icon.ExtractAssociatedIcon` + badge), tooltip = wallpaper actif, thème natif Fluent/Dark intouché, efficiency mode off | `App.xaml.cs` (`BuildTray`, `BuildStateIcon`) |
+| Fenêtre | WPF-UI 4.3.0 : `FluentWindow` backdrop `None`, habillage **Vermillon** (palette crème/encre/vermillon, ombres dures, coins carrés, titres en `Shippori Mincho` embarquée) scopé à `MainWindow.Resources` — le thème `ui:ThemesDictionary Theme="Dark"` reste global (App.xaml) pour que le tray natif ne soit pas affecté ; redimensionnable, grille des `Récents` en héros, barre du bas à 2 contrôles (Play/Pause, `Flyout` réglages), `SnackbarPresenter` pour les erreurs, icônes `SymbolIcon` (Segoe Fluent) | `MainWindow.xaml(.cs)`, `src/Wallflow/Resources/Vermillon.xaml` |
 | Vignettes | API shell `IShellItemImageFactory`, décodage **asynchrone** (thread pool + Dispatcher) | `Thumbnail.cs`, `MainWindow.BuildThumb` |
 | Conversion perf | ffmpeg.exe embarqué (build ≥ 7.1 requis pour le webp animé, `lib/` hors git comme libmpv) : GIF/webp → mp4 H.264 en cache pour récupérer le décodage matériel | `WallpaperCache.cs` |
 | Persistance | `System.Text.Json`, écriture atomique (tmp + `File.Move` overwrite) | `%LOCALAPPDATA%\Wallflow\settings.json` |
@@ -28,6 +28,24 @@ Formats acceptés (`AppService.SupportedExtensions`) : `.gif .webp .mp4 .webm .m
 Cibles : Windows 10/11, x64 uniquement. Distribution : zip portable (pas d'installeur).
 Vérification manuelle des comportements live-only (diaporama, veille, économie d'énergie, erreurs
 mpv) : [TEST-MANUEL.md](./TEST-MANUEL.md).
+
+## Habillage Vermillon de la fenêtre
+
+`src/Wallflow/Resources/Vermillon.xaml` (nouveau `ResourceDictionary`) redéfinit les clés de
+brush/couleur WPF-UI (`ApplicationBackgroundBrush`, `ButtonBackground*`, `ToggleSwitch*`,
+`FlyoutBackground`, `ContextMenuBackground`…) avec la palette Vermillon (tokens extraits dans
+[docs/design/vermillon-tokens.md](design/vermillon-tokens.md)). Il est mergé dans
+`MainWindow.Resources`, **pas** `App.Resources` : la résolution `DynamicResource` remonte l'arbre
+visuel et trouve ces overrides avant d'atteindre `Application`, donc seule `MainWindow` en hérite —
+`App.xaml` garde `ui:ThemesDictionary Theme="Dark"` global, ce qui laisse le menu contextuel natif
+du tray (construit dans `App.xaml.cs`, hors de l'arbre visuel de `MainWindow`) inchangé. Décision
+délibérée : merger les overrides dans `App.Resources` aurait reskinné le tray aussi.
+
+Corollaires visuels : `WindowBackdropType="None"` (remplace `Mica`, incompatible avec un fond
+opaque crème), coins carrés forcés par un `Style` `CornerRadius="0"` sur `ui:Button` (scopé à
+`MainWindow.Resources`), ombres portées dures via un `DropShadowEffect` `BlurRadius="0"`. Titres en
+`Shippori Mincho` (police réelle embarquée en `Resource` MSBuild, `src/Wallflow/Fonts/`, référencée
+par fragment `./Fonts/#Shippori Mincho` — pas de fallback système si le fichier manque).
 
 ## Modèle de domaine (non persisté, sauf `Settings`)
 
@@ -76,7 +94,6 @@ classDiagram
         Load(path)  // vérifie le code retour de loadfile
         Pause()
         Resume()
-        ApplyVolume(vol, muted)
         ApplyVideoFit(fit)
         ApplyLoop(loop)
         ApplySpeed(speed)
@@ -114,8 +131,6 @@ classDiagram
         SlideshowSnapshot? slideshowSnapshot   // persisté (issue 008)
         bool autoStart
         bool autoPauseEnabled
-        int volume
-        bool muted
         string videoFit
         bool loop
         double speed
@@ -278,10 +293,10 @@ Le menu contextuel des vignettes (`MainWindow.BuildRecentMenu`) expose « Retire
 
 ### Appliquer un réglage de lecture
 
-Déclencheurs : un contrôle des flyouts de la barre du bas de `MainWindow` (flyout volume : slider
-avec readout `%` + toggle muet ; flyout ⚙ : radios cadrage, toggle boucle, **4 radios de vitesse**
-`0.5× · 1× · 1.5× · 2×`, toggle démarrage Windows) ou le sous-menu Volume du tray (`App.BuildTray` :
-muet + presets 25/50/75/100 %).
+Déclencheurs : le flyout ⚙ de la barre du bas de `MainWindow` (radios cadrage, toggle boucle,
+**4 radios de vitesse** `0.5× · 1× · 1.5× · 2×`, toggle démarrage Windows). Le son est retiré du
+produit (écart DESIGN.md du 2026-08-10) : aucun contrôle de volume, ni fenêtre ni tray — `mpv`
+reste codé en dur en muet (`MpvPlayer` constructeur, `SetOption("mute", "yes")`).
 
 La vitesse s'affiche par **paliers nommés** (helper pur `SpeedPaliers`, valeurs `[0.5, 1.0, 1.5,
 2.0]`). Au refresh, la fenêtre met en évidence `SpeedPaliers.Nearest(Settings.Speed)` **sans**
@@ -294,7 +309,7 @@ flowchart TD
     A["Contrôle fenêtre ou menu tray"] --> B["AppService.ApplyPlaybackSettings()"]
     B --> C["Settings.Save() — écriture settings.json"]
     B --> D["IPlayerManager.ApplySettings(settings)<br/>sur chaque MpvPlayer"]
-    D --> E["ApplyVolume / ApplyVideoFit /<br/>ApplyLoop / ApplySpeed (propriétés mpv à chaud)"]
+    D --> E["ApplyVideoFit / ApplyLoop /<br/>ApplySpeed (propriétés mpv à chaud)"]
     B --> F["StateChanged → fenêtre et tray se resynchronisent"]
 ```
 
@@ -302,12 +317,25 @@ flowchart TD
 les players fraîchement créés (démarrage, `Rebuild`) partent des défauts figés du constructeur
 `MpvPlayer`, pas de `settings.json`. `AppService` pousse les settings au manager dès sa
 construction. Les valeurs hors limites sont clampées dans les setters de `Settings`
-(volume 0-100, vitesse 0.25-4.0, cadrage restreint à cover/fit/fill).
+(vitesse 0.25-4.0, cadrage restreint à cover/fit/fill).
 
-Le **volume** se distingue des autres réglages : pendant le drag du slider,
-`ApplyPlaybackSettings(save: false)` pousse la valeur à chaud aux players **sans toucher au
-disque** ; la persistance n'a lieu qu'à la fin du drag (`Thumb.DragCompletedEvent` →
-`Settings.Save()`). Le menu du tray (presets 25/50/75/100 %) garde l'écriture immédiate.
+### Icône et info-bulle du tray
+
+Point d'accroche unique : le `Sync()` local de `App.BuildTray()`, déjà appelé sur chaque
+`_service.StateChanged`. Deux diffs gardés en mémoire (`_lastTrayPaused`, `_lastTrayTooltip`)
+évitent de reconstruire l'icône/tooltip sur un `StateChanged` qui ne change ni l'un ni l'autre
+(ex. changement de vitesse).
+
+- **Icône lecture/pause** : badge dessiné à l'exécution par-dessus l'icône de l'exe
+  (`BuildStateIcon`, `System.Drawing.Graphics.DrawIcon` + `Bitmap.GetHicon` + `Icon.FromHandle`) —
+  aucun `.ico` à committer. `Icon.FromHandle` ne prend pas possession du HICON source (doc MS) :
+  `DestroyIcon` (P/Invoke `user32.dll`) est appelé explicitement juste après l'assignation à
+  `tray.Icon`, sinon chaque toggle fuit un handle GDI (recherche complète :
+  [docs/research/tray-icon-state-tooltip.md](research/tray-icon-state-tooltip.md)).
+- **Tooltip** : `Path.GetFileName(ActiveWallpaper)`, tronqué à 127 caractères (limite dure
+  `NOTIFYICONDATAW.szTip`), ou `"Wallflow"` si aucun wallpaper actif.
+- Le menu contextuel du tray (natif, non affecté par l'habillage Vermillon ci-dessus) gagne un
+  séparateur avant `Quitter`.
 
 ### Reconstruction multi-écran
 
@@ -445,8 +473,6 @@ Un seul fichier, `%LOCALAPPDATA%\Wallflow\settings.json`, réécrit en entier à
   "Recents": ["...max 10 chemins, plus récent en tête..."],
   "AutoStart": true,
   "AutoPauseEnabled": true,
-  "Volume": 100,
-  "Muted": false,
   "VideoFit": "cover",
   "Loop": true,
   "Speed": 1.0
@@ -471,7 +497,7 @@ géré par l'OS.
 Deux protections de réactivité dans `MainWindow` :
 
 - **Grille reconstruite seulement si nécessaire** (`RefreshGrid`) : clé = liste des récents +
-  wallpaper actif ; un `StateChanged` de réglage (drag du slider volume) ne redéclenche pas le
+  wallpaper actif ; un `StateChanged` de réglage (ex. changement de vitesse) ne redéclenche pas le
   décodage des vignettes.
 - **Décodage asynchrone** (`BuildThumb`) : placeholder immédiat (nom du fichier), extraction
   shell sur le thread pool, remplacement via le `Dispatcher` à l'arrivée — l'ouverture de la

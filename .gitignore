@@ -496,3 +496,12 @@ tools/*
 !tools/package.ps1
 !tools/setup-binaries.sh
 .claude
+
+# artefacts de planification/recherche (grilling, tickets scaffoldés, recherche à froid) —
+# gardés sur disque pour référence future, jamais committés
+.scratch/
+docs/design/
+docs/research/
+
+# instructions projet locales, jamais committées
+CLAUDE.md

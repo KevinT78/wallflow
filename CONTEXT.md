@@ -8,8 +8,8 @@ Ce fichier est un glossaire — le vocabulaire canonique du domaine, rien d'autr
 > **Vue produit** : [docs/VUE-PRODUIT.md](./docs/VUE-PRODUIT.md) · **Architecture technique** :
 > [docs/ARCHITECTURE-TECHNIQUE.md](./docs/ARCHITECTURE-TECHNIQUE.md) · **Décisions produit** :
 > [DESIGN.md](./DESIGN.md).
-> _Généré au commit `12d5710` (2026-08-07)._
-<!-- doc-provenance: commit=12d5710 generated=2026-08-07 -->
+> _Généré au commit `f897b4a` (2026-08-12, + arbre de travail modifié)._
+<!-- doc-provenance: commit=f897b4a generated=2026-08-12 -->
 
 ## Langage
 
@@ -67,11 +67,11 @@ lecture`, le `Wallpaper` courant et les `Récents`.
 _Avoid_: préférences, options, settings (dans la prose)
 
 **Réglages de lecture** :
-Les quatre réglages qui gouvernent comment le `Wallpaper` est joué : **volume** (0-100 + muet),
-**cadrage** (cover / fit / fill), **boucle** (on/off) et **vitesse** (0.25x–4x). Globaux (pas par
-wallpaper), appliqués immédiatement, persistés. Le volume et le muet sont aussi réglables depuis le
-menu du tray.
-_Avoid_: options de lecture, paramètres vidéo
+Les trois réglages qui gouvernent comment le `Wallpaper` est joué : **cadrage** (cover / fit /
+fill), **boucle** (on/off) et **vitesse** (0.25x–4x). Globaux (pas par wallpaper), appliqués
+immédiatement, persistés. Le son est retiré du produit (`Wallpaper` toujours muet, aucun contrôle
+de volume) — voir écart DESIGN.md du 2026-08-10.
+_Avoid_: options de lecture, paramètres vidéo, volume, muet (ce ne sont plus des réglages)
 
 **Diaporama Windows** :
 Le réglage natif de Windows qui fait défiler périodiquement un dossier d'images en fond d'écran

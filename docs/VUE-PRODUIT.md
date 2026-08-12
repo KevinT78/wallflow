@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `10aab01` (2026-08-05)._
-<!-- doc-provenance: commit=10aab01 generated=2026-08-05 -->
+> _Généré au commit `f897b4a` (2026-08-12, + arbre de travail modifié)._
+<!-- doc-provenance: commit=f897b4a generated=2026-08-12 -->
 
 ## En une phrase
 
@@ -40,12 +40,13 @@ mindmap
       Pause auto en plein écran
       Pause auto sur batterie
       Pause auto en mode Économie d'énergie
-    🔊 Lecture
-      Volume et muet, avec pourcentage
+      Icône de la zone de notification reflète lecture/pause en un coup d'œil
+      Info-bulle de la zone de notification : nom du wallpaper actif
+    🎛️ Lecture
       Cadrage cover, fit ou fill
       Boucle on/off
       Vitesse par paliers 0.5x à 2x
-      Volume aussi depuis le tray
+      Toujours sans son (le produit n'a aucun contrôle de volume)
     🧹 Retirer / Quitter
       Retirer le fond, le bureau natif revient
       Le diaporama Windows éventuel est remis comme avant
@@ -77,13 +78,15 @@ flowchart TD
     G --> C
 ```
 
-1. Premier lancement : une fenêtre au style Windows 11, presque vide — la grille des récents ne
-   contient qu'une tuile « + » avec l'invite « dépose un fichier ou clique ».
+1. Premier lancement : une fenêtre au style éditorial (fond crème, encre, accent vermillon,
+   titres en serif), presque vide — la grille des récents ne contient qu'une tuile « + » avec
+   l'invite « dépose un fichier ou clique ».
 2. L'utilisateur glisse un fichier (n'importe où sur la fenêtre, un voile « Dépose pour appliquer »
    apparaît le temps du glisser) ou clique la tuile « + » pour le choisir — il est appliqué
-   immédiatement (par défaut : en boucle et sans son). Volume, cadrage, boucle et vitesse se règlent
-   depuis la barre du bas de la fenêtre (le volume aussi depuis la zone de notification) ; le
-   wallpaper qui joue est repérable d'un coup d'œil à son badge dans la grille.
+   immédiatement (par défaut : en boucle et sans son, le produit n'a aucun contrôle de volume).
+   Cadrage, boucle et vitesse se règlent depuis la barre du bas de la fenêtre ; le wallpaper qui
+   joue est repérable d'un coup d'œil à son badge dans la grille, et sans même ouvrir la fenêtre à
+   l'icône de la zone de notification (lecture/pause) et à son info-bulle (nom du wallpaper actif).
 3. Wallflow s'efface dans la zone de notification ; l'utilisateur n'y repense plus.
 4. Quand un jeu ou une vidéo passe en plein écran, que le portable passe sur batterie, ou que le
    mode Économie d'énergie s'active, l'animation se met en pause toute seule — zéro impact sur les
@@ -139,6 +142,6 @@ flowchart LR
 |--------|------|
 | Fenêtre + icône de notification | Le seul point de contact : déposer un fichier, revoir les récents, mettre en pause. |
 | Cœur de l'application | Décide quoi jouer et quand se mettre en pause ; surveille plein écran et batterie. |
-| Lecteur mpv | Décode et affiche tous les formats (GIF, WebP, vidéo, image), selon les réglages de lecture (volume, cadrage, boucle, vitesse). |
+| Lecteur mpv | Décode et affiche tous les formats (GIF, WebP, vidéo, image), toujours sans son, selon les réglages de lecture (cadrage, boucle, vitesse). |
 | Convertisseur | Transforme une fois pour toutes les GIF/WebP animés en vidéo économe, en arrière-plan — l'animation devient quasi invisible dans la consommation du PC. |
 | Sauvegarde locale | Un petit fichier sur le PC : wallpaper courant, récents, réglages. Rien ne quitte la machine. |
