@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `f897b4a` (2026-08-12, + arbre de travail modifié)._
-<!-- doc-provenance: commit=f897b4a generated=2026-08-12 -->
+> _Généré au commit `82a2ed5` (2026-08-13)._
+<!-- doc-provenance: commit=82a2ed5 generated=2026-08-13 -->
 
 ## Stack
 
@@ -14,7 +14,7 @@
 | Application | C# / .NET 8 WPF, TFM `net8.0-windows10.0.19041.0` (min. 17763), x64 | `src/Wallflow/` |
 | Lecture média | libmpv (`libmpv-2.dll`, build shinchiro, dans `lib/` hors git), embedding `wid` | `MpvPlayer.cs` |
 | Intégration bureau | WinAPI via P/Invoke (WorkerW, foreground, power) | `WallpaperHost.cs`, `ActivityMonitor.cs` |
-| UI tray | H.NotifyIcon.Wpf 2.3.0 : icône lecture/pause dessinée en mémoire (GDI+, base `Icon.ExtractAssociatedIcon` + badge), tooltip = wallpaper actif, thème natif Fluent/Dark intouché, efficiency mode off | `App.xaml.cs` (`BuildTray`, `BuildStateIcon`) |
+| UI tray | H.NotifyIcon.Wpf 2.3.0 : icône de marque + badge lecture/pause dessinés en mémoire (GDI+, palette Vermillon), tooltip = wallpaper actif, thème natif Fluent/Dark intouché, efficiency mode off | `App.xaml.cs` (`BuildTray`, `BuildBrandBitmap`, `BuildStateIcon`) |
 | Fenêtre | WPF-UI 4.3.0 : `FluentWindow` backdrop `None`, habillage **Vermillon** (palette crème/encre/vermillon, ombres dures, coins carrés, titres en `Shippori Mincho` embarquée) scopé à `MainWindow.Resources` — le thème `ui:ThemesDictionary Theme="Dark"` reste global (App.xaml) pour que le tray natif ne soit pas affecté ; redimensionnable, grille des `Récents` en héros, barre du bas à 2 contrôles (Play/Pause, `Flyout` réglages), `SnackbarPresenter` pour les erreurs, icônes `SymbolIcon` (Segoe Fluent) | `MainWindow.xaml(.cs)`, `src/Wallflow/Resources/Vermillon.xaml` |
 | Vignettes | API shell `IShellItemImageFactory`, décodage **asynchrone** (thread pool + Dispatcher) | `Thumbnail.cs`, `MainWindow.BuildThumb` |
 | Conversion perf | ffmpeg.exe embarqué (build ≥ 7.1 requis pour le webp animé, `lib/` hors git comme libmpv) : GIF/webp → mp4 H.264 en cache pour récupérer le décodage matériel | `WallpaperCache.cs` |
@@ -326,12 +326,23 @@ Point d'accroche unique : le `Sync()` local de `App.BuildTray()`, déjà appelé
 évitent de reconstruire l'icône/tooltip sur un `StateChanged` qui ne change ni l'un ni l'autre
 (ex. changement de vitesse).
 
-- **Icône lecture/pause** : badge dessiné à l'exécution par-dessus l'icône de l'exe
-  (`BuildStateIcon`, `System.Drawing.Graphics.DrawIcon` + `Bitmap.GetHicon` + `Icon.FromHandle`) —
-  aucun `.ico` à committer. `Icon.FromHandle` ne prend pas possession du HICON source (doc MS) :
-  `DestroyIcon` (P/Invoke `user32.dll`) est appelé explicitement juste après l'assignation à
-  `tray.Icon`, sinon chaque toggle fuit un handle GDI (recherche complète :
-  [docs/research/tray-icon-state-tooltip.md](research/tray-icon-state-tooltip.md)).
+- **Icône de marque** : `BuildBrandBitmap` dessine en mémoire un pictogramme (soleil + montagne,
+  blanc sur fond vermillon `#FF3B21`, coins carrés) — pas l'icône générique .NET extraite de
+  l'exe, pas d'asset `.ico` à maintenir. `Graphics.DrawIcon` a été essayé puis abandonné : il
+  passe par un HDC GDI legacy qui ne préserve pas l'alpha une fois recomposé via `GetHicon()`
+  (fond transparent ressorti opaque) — `Graphics.DrawImage` (bitmap → bitmap) est alpha-aware de
+  bout en bout.
+- **Icône lecture/pause** : badge crème/encre dessiné à l'exécution par-dessus l'icône de marque
+  (`BuildStateIcon`, `Bitmap.GetHicon` + `Icon.FromHandle`) — `Icon.FromHandle` ne prend pas
+  possession du HICON source (doc MS) : `DestroyIcon` (P/Invoke `user32.dll`) est appelé
+  explicitement juste après l'assignation à `tray.Icon`, sinon chaque toggle fuit un handle GDI
+  (recherche complète : [docs/research/tray-icon-state-tooltip.md](research/tray-icon-state-tooltip.md)).
+  > ⚠️ **Piège d'ordonnancement (bug réel, corrigé)** : `tray.ForceCreate()` doit s'exécuter
+  > **avant** le premier appel à `Sync()`. Tant que `TaskbarIcon.IsCreated` est faux, H.NotifyIcon
+  > se contente de mémoriser le HICON assigné pour l'utiliser plus tard au `NIM_ADD`, sans appeler
+  > `Shell_NotifyIcon` tout de suite — un `DestroyIcon` immédiat après ce `Sync()` prématuré détruit
+  > donc le handle avant cet usage différé : le slot du tray se crée, mais reste vide (icône
+  > invisible, constaté en usage réel).
 - **Tooltip** : `Path.GetFileName(ActiveWallpaper)`, tronqué à 127 caractères (limite dure
   `NOTIFYICONDATAW.szTip`), ou `"Wallflow"` si aucun wallpaper actif.
 - Le menu contextuel du tray (natif, non affecté par l'habillage Vermillon ci-dessus) gagne un
