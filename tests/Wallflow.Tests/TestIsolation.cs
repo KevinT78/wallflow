@@ -12,6 +12,7 @@ public sealed class TestIsolation : IDisposable
     private readonly string? _prevDir;
     private readonly bool _prevSkipRunKey;
     private readonly bool _prevCacheDisabled;
+    private readonly string? _prevCacheDir;
     private readonly bool _prevLogEnabled;
     private readonly bool _prevMonitorDisabled;
 
@@ -20,12 +21,16 @@ public sealed class TestIsolation : IDisposable
         _prevDir = Settings.DirOverride;
         _prevSkipRunKey = AppService.SkipRunKey;
         _prevCacheDisabled = WallpaperCache.Disabled;
+        _prevCacheDir = WallpaperCache.DirOverride;
         _prevLogEnabled = Log.Enabled;
         _prevMonitorDisabled = ActivityMonitor.Disabled;
 
         Settings.DirOverride = Path.Combine(Path.GetTempPath(), "WallflowTests_" + Guid.NewGuid());
         AppService.SkipRunKey = true;
         WallpaperCache.Disabled = true;
+        // Toujours posé, même si Disabled coupe la plupart des accès : un test qui repasse
+        // Disabled à false (pour tester PruneOrphans) ne doit jamais toucher le vrai cache utilisateur.
+        WallpaperCache.DirOverride = Path.Combine(Path.GetTempPath(), "WallflowTests_Cache_" + Guid.NewGuid());
         Log.Enabled = false;
         ActivityMonitor.Disabled = true;
     }
@@ -45,6 +50,7 @@ public sealed class TestIsolation : IDisposable
         Settings.DirOverride = _prevDir;
         AppService.SkipRunKey = _prevSkipRunKey;
         WallpaperCache.Disabled = _prevCacheDisabled;
+        WallpaperCache.DirOverride = _prevCacheDir;
         Log.Enabled = _prevLogEnabled;
         ActivityMonitor.Disabled = _prevMonitorDisabled;
     }

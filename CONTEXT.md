@@ -8,8 +8,8 @@ Ce fichier est un glossaire — le vocabulaire canonique du domaine, rien d'autr
 > **Vue produit** : [docs/VUE-PRODUIT.md](./docs/VUE-PRODUIT.md) · **Architecture technique** :
 > [docs/ARCHITECTURE-TECHNIQUE.md](./docs/ARCHITECTURE-TECHNIQUE.md) · **Décisions produit** :
 > [DESIGN.md](./DESIGN.md).
-> _Généré au commit `f897b4a` (2026-08-12, + arbre de travail modifié)._
-<!-- doc-provenance: commit=f897b4a generated=2026-08-12 -->
+> _Généré au commit `eca8be4` (2026-08-13)._
+<!-- doc-provenance: commit=eca8be4 generated=2026-08-13 -->
 
 ## Langage
 

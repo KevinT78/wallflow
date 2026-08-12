@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `f897b4a` (2026-08-12, + arbre de travail modifié)._
-<!-- doc-provenance: commit=f897b4a generated=2026-08-12 -->
+> _Généré au commit `eca8be4` (2026-08-13)._
+<!-- doc-provenance: commit=eca8be4 generated=2026-08-13 -->
 
 ## En une phrase
 

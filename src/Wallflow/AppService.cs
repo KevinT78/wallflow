@@ -48,6 +48,7 @@ public sealed class AppService
         _players = playerManager;
         _players.PlaybackError += message => PlaybackError?.Invoke(message);
         Settings = Settings.Load();
+        WallpaperCache.PruneOrphans(Settings.Recents); // purge le cache des sources supprimées pendant l'arrêt
         WriteRunKey();
         WallpaperHost.Init();
 
@@ -129,6 +130,7 @@ public sealed class AppService
         if (Settings.Recents.Count > 10)
             Settings.Recents.RemoveRange(10, Settings.Recents.Count - 10);
         Settings.Save();
+        WallpaperCache.PruneOrphans(Settings.Recents);
         _wallpaperActive = true;
         StateChanged?.Invoke();
         return true;
@@ -159,6 +161,7 @@ public sealed class AppService
     {
         Settings.Recents.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
         Settings.Save();
+        WallpaperCache.PruneOrphans(Settings.Recents);
         StateChanged?.Invoke();
     }
 

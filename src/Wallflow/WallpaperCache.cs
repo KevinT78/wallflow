@@ -11,7 +11,8 @@ namespace Wallflow;
 /// profite du décodage matériel (~7 %). Les récents et settings gardent le chemin d'origine ;
 /// seul le player reçoit le chemin converti. Sans ffmpeg.exe (à côté de l'exe ou dans le PATH),
 /// ou si la conversion échoue : l'original joue tel quel — le cache est une optimisation, jamais
-/// un point de défaillance.
+/// un point de défaillance. Réconciliation (<see cref="PruneOrphans"/>) après chaque mutation des
+/// récents : le dossier de cache ne grossit pas indéfiniment.
 /// </summary>
 public static class WallpaperCache
 {
@@ -19,9 +20,12 @@ public static class WallpaperCache
     /// Settings.DirOverride) : sans ça, chaque Apply(.gif) des tests spawnerait un ffmpeg.</summary>
     public static bool Disabled { get; set; }
 
+    /// <summary>Remplace CacheDir. Isolation des tests uniquement (même pattern que Settings.DirOverride).</summary>
+    public static string? DirOverride { get; set; }
+
     private static readonly string[] Convertible = [".gif", ".webp"];
 
-    private static string CacheDir => Path.Combine(
+    private static string CacheDir => DirOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wallflow", "cache");
 
     public static bool IsConvertible(string path) =>
@@ -82,7 +86,31 @@ public static class WallpaperCache
         });
     }
 
-    private static string CachePathFor(string path)
+    /// <summary>Supprime tout .mp4 du cache qui ne correspond à la clé (chemin+taille+date) d'aucun
+    /// wallpaper actif fourni. À appeler après toute mutation qui peut faire sortir un wallpaper des
+    /// récents : éviction au-delà de la limite, retrait manuel, purge des sources supprimées au
+    /// démarrage. Best-effort par fichier : un verrou (lecture en cours) ne doit pas interrompre la
+    /// purge des autres orphelins.</summary>
+    public static void PruneOrphans(IEnumerable<string> activePaths)
+    {
+        if (Disabled || !Directory.Exists(CacheDir)) return;
+
+        var active = activePaths.Where(File.Exists).Select(CachePathFor)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in Directory.EnumerateFiles(CacheDir, "*.mp4"))
+        {
+            // Exclut les conversions en cours (Guid.tmp.mp4) : pas des orphelins, juste pas encore promues.
+            if (file.EndsWith(".tmp.mp4", StringComparison.OrdinalIgnoreCase)) continue;
+            if (active.Contains(file)) continue;
+            try { File.Delete(file); }
+            catch (Exception ex) { Log.Warn($"Purge cache orpheline échouée pour {file} ({ex.Message})"); }
+        }
+    }
+
+    /// <summary>Chemin de cache attendu pour ce fichier source (clé = chemin+taille+date). Public
+    /// pour que <see cref="PruneOrphans"/> et les tests puissent le calculer.</summary>
+    public static string CachePathFor(string path)
     {
         var info = new FileInfo(path);
         var key = $"{info.FullName.ToLowerInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";

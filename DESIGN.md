@@ -130,8 +130,10 @@ animés), machine de référence i5-6300U + HD 520. Baseline reproductible :
   `%LOCALAPPDATA%\Wallflow\cache` (clé = chemin+taille+date), l'original joue pendant la
   conversion (~20-30 s pour 17 Mo sur la machine de référence) puis bascule à chaud. Les récents
   et `settings.json` gardent le chemin d'origine. Sans `ffmpeg.exe` ou sur échec : l'original
-  joue tel quel — le cache est une optimisation, jamais un point de défaillance. Pas d'éviction
-  (borné de fait par les 10 récents).
+  joue tel quel — le cache est une optimisation, jamais un point de défaillance. Réconciliation
+  (`WallpaperCache.PruneOrphans`) après chaque mutation des récents (ajout au-delà de la limite de
+  10, retrait manuel, purge des sources supprimées au démarrage) : tout `.mp4` du dossier cache qui
+  ne correspond à la clé d'aucun récent actuel est supprimé.
 - **Conséquence distribution** : le zip embarque `ffmpeg.exe` (~145 Mo build BtbN GPL, dans
   `lib/` hors git comme libmpv — un build ≥ 7.1 est requis pour décoder le webp animé).
 - **Vignettes async** : la grille s'affiche immédiatement (placeholder = nom du fichier),

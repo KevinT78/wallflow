@@ -326,6 +326,58 @@ public class AppServiceTests
     }
 
     [Fact]
+    public void Apply_EvictingBeyondTenRecents_PrunesEvictedWallpaperCache()
+    {
+        using var iso = new TestIsolation();
+        WallpaperCache.Disabled = false;
+        var svc = new AppService(new FakePlayerManager());
+        var evicted = iso.CreateTempMedia(".gif");
+        svc.Apply(evicted);
+        Directory.CreateDirectory(WallpaperCache.DirOverride!);
+        var evictedCache = WallpaperCache.CachePathFor(evicted);
+        File.WriteAllBytes(evictedCache, []);
+
+        for (var i = 0; i < 10; i++)
+            svc.Apply(iso.CreateTempMedia(".gif")); // pousse "evicted" hors des 10 récents
+
+        Assert.False(File.Exists(evictedCache));
+    }
+
+    [Fact]
+    public void RemoveFromRecents_PrunesItsCache()
+    {
+        using var iso = new TestIsolation();
+        WallpaperCache.Disabled = false;
+        var svc = new AppService(new FakePlayerManager());
+        var a = iso.CreateTempMedia(".gif");
+        svc.Apply(a);
+        Directory.CreateDirectory(WallpaperCache.DirOverride!);
+        var cache = WallpaperCache.CachePathFor(a);
+        File.WriteAllBytes(cache, []);
+
+        svc.RemoveFromRecents(a);
+
+        Assert.False(File.Exists(cache));
+    }
+
+    [Fact]
+    public void Apply_StillRecentWallpaperCache_NeverPruned()
+    {
+        using var iso = new TestIsolation();
+        WallpaperCache.Disabled = false;
+        var svc = new AppService(new FakePlayerManager());
+        var a = iso.CreateTempMedia(".gif");
+        svc.Apply(a);
+        Directory.CreateDirectory(WallpaperCache.DirOverride!);
+        var cache = WallpaperCache.CachePathFor(a);
+        File.WriteAllBytes(cache, []);
+
+        svc.Apply(iso.CreateTempMedia(".mp4")); // second Apply : re-déclenche PruneOrphans
+
+        Assert.True(File.Exists(cache)); // "a" toujours dans les récents → jamais purgé
+    }
+
+    [Fact]
     public void BuildWakeTaskArgs_Enabled_CreatesTaskOnResumeFromHibernation()
     {
         var args = AppService.BuildWakeTaskArgs(@"C:\Wallflow\wallflow.exe", enabled: true);

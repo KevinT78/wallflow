@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `82a2ed5` (2026-08-13)._
-<!-- doc-provenance: commit=82a2ed5 generated=2026-08-13 -->
+> _Généré au commit `eca8be4` (2026-08-13)._
+<!-- doc-provenance: commit=eca8be4 generated=2026-08-13 -->
 
 ## Stack
 
@@ -116,6 +116,7 @@ classDiagram
         bool Disabled
         TryGet(path) string?
         ConvertAsync(path, onConverted)
+        PruneOrphans(activePaths)
     }
     class ActivityMonitor {
         event ShouldPauseChanged
@@ -216,8 +217,10 @@ La conversion (`WallpaperCache`, clé de cache = chemin + taille + date dans
 `settings.json` gardent toujours le **chemin d'origine**. Sans `ffmpeg.exe` ou sur échec ffmpeg,
 l'original joue tel quel — le cache est une optimisation, jamais un point de défaillance. Le test
 « toujours actif » se fait dans le lambda dispatché sur le thread UI (un Apply intercalé ne doit
-pas être écrasé par une conversion périmée). Pas d'éviction du cache (borné de fait par les
-10 récents).
+pas être écrasé par une conversion périmée). `WallpaperCache.PruneOrphans` supprime les `.mp4`
+dont la clé ne correspond à aucun récent actuel ; appelé après chaque mutation qui peut faire
+sortir un wallpaper des récents (éviction au-delà de la limite de 10, retrait manuel, purge des
+sources supprimées au démarrage) — le dossier de cache ne grossit pas indéfiniment.
 
 La validation d'entrée (existence du fichier, extension dans la liste supportée) est la seule
 frontière de confiance du produit : tout le reste est local et mono-utilisateur.
@@ -492,7 +495,8 @@ Un seul fichier, `%LOCALAPPDATA%\Wallflow\settings.json`, réécrit en entier à
 
 Pas à côté de l'exe : le dossier portable peut être déplacé ou en lecture seule — LOCALAPPDATA
 survit aux deux. À côté du fichier vit `%LOCALAPPDATA%\Wallflow\cache\` (mp4 convertis par
-`WallpaperCache`, nommés par hash, jamais purgés) et `%LOCALAPPDATA%\Wallflow\logs\` (journaux
+`WallpaperCache`, nommés par hash, purgés par `PruneOrphans` dès qu'ils ne correspondent plus à
+un récent) et `%LOCALAPPDATA%\Wallflow\logs\` (journaux
 rotatifs de `Log`). Écriture **atomique** : `settings.json.tmp` + `StreamWriter.Flush(true)` +
 `File.Move(..., overwrite: true)` — une coupure de courant ne laisse jamais un JSON tronqué à la
 place du dernier bon. Les `recents` stockent des **chemins**, pas des copies ; `Settings.Save()`
