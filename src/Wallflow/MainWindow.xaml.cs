@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Wpf.Ui.Controls;
 using Button = System.Windows.Controls.Button;
@@ -15,7 +14,7 @@ namespace Wallflow;
 
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
-    private const string AccentKey = "AccentFillColorDefaultBrush";
+    private const string AccentKey = "VermillonAccentBrush";
 
     private readonly AppService _service;
     private bool _refreshing;
@@ -26,10 +25,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _service = service;
         InitializeComponent();
 
-        VolumeSlider.ValueChanged += OnVolumeChanged;
-        // Persiste le volume une seule fois en fin de glissement, pas à chaque tick.
-        VolumeSlider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler(OnVolumeDragCompleted));
-        MuteToggle.Click += OnMuteToggle;
         FitCover.Checked += OnVideoFitChanged;
         FitFit.Checked += OnVideoFitChanged;
         FitFill.Checked += OnVideoFitChanged;
@@ -51,11 +46,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _refreshing = true;
 
         PlayPauseIcon.Symbol = _service.ManualPause ? SymbolRegular.Play24 : SymbolRegular.Pause24;
-        VolumeIcon.Symbol = _service.Settings.Muted ? SymbolRegular.SpeakerMute24 : SymbolRegular.Speaker224;
 
-        VolumeSlider.Value = _service.Settings.Volume;
-        VolumeReadout.Text = $"{_service.Settings.Volume}%";
-        MuteToggle.IsChecked = _service.Settings.Muted;
         AutoStartToggle.IsChecked = _service.Settings.AutoStart;
         LoopToggle.IsChecked = _service.Settings.Loop;
         switch (_service.Settings.VideoFit)
@@ -78,7 +69,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // La grille (et le décodage des vignettes via l'API shell) ne se reconstruit que si la liste
-    // des récents ou le wallpaper actif a bougé — pas à chaque StateChanged (ex. drag du slider volume).
+    // des récents ou le wallpaper actif a bougé — pas à chaque StateChanged (ex. toggle pause/vitesse).
     private void RefreshGrid()
     {
         var recents = _service.Recents;
@@ -129,7 +120,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             {
                 Margin = new Thickness(4),
                 Padding = new Thickness(6, 2, 6, 2),
-                CornerRadius = new CornerRadius(4),
+                CornerRadius = new CornerRadius(0),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Top,
                 Child = new TextBlock { Text = "Actif", FontSize = 11, Foreground = Brushes.White },
@@ -240,32 +231,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             TryApply(dialog.FileName);
     }
 
-    private void OnVolumeButtonClick(object sender, RoutedEventArgs e) => VolumeFlyout.Show();
     private void OnSettingsButtonClick(object sender, RoutedEventArgs e) => SettingsFlyout.Show();
-
-    private void OnVolumeChanged(object sender, RoutedEventArgs e)
-    {
-        VolumeReadout.Text = $"{(int)VolumeSlider.Value}%";
-        if (_refreshing) return;
-        _service.Settings.Volume = (int)VolumeSlider.Value;
-        _service.Settings.Muted = MuteToggle.IsChecked == true;
-        // À chaud, sans écrire le disque à chaque tick du drag : la persistance se fait à la fin
-        // du glissement (OnVolumeDragCompleted), sinon on écrit settings.json des dizaines de fois.
-        _service.ApplyPlaybackSettings(save: false);
-    }
-
-    private void OnVolumeDragCompleted(object sender, DragCompletedEventArgs e)
-    {
-        if (_refreshing) return;
-        _service.Settings.Volume = (int)VolumeSlider.Value;
-        _service.ApplyPlaybackSettings();
-    }
-
-    private void OnMuteToggle(object sender, RoutedEventArgs e)
-    {
-        _service.Settings.Muted = MuteToggle.IsChecked == true;
-        _service.ApplyPlaybackSettings();
-    }
 
     private void OnVideoFitChanged(object sender, RoutedEventArgs e)
     {

@@ -35,10 +35,10 @@ public class AppServiceTests
         using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         var svc = new AppService(pm);
-        svc.Settings.Volume = 50;
+        svc.Settings.Speed = 1.5;
         svc.ApplyPlaybackSettings();
 
-        Assert.Equal(50, pm.LastApplied?.Volume);
+        Assert.Equal(1.5, pm.LastApplied?.Speed);
     }
 
     [Fact]
@@ -47,11 +47,11 @@ public class AppServiceTests
         using var iso = new TestIsolation();
         var pm = new FakePlayerManager();
         var svc = new AppService(pm);
-        svc.Settings.Volume = 37;
+        svc.Settings.Speed = 1.5;
         svc.ApplyPlaybackSettings(save: false);
 
-        Assert.Equal(37, pm.LastApplied?.Volume);     // appliqué aux players à chaud
-        Assert.Equal(100, Settings.Load().Volume);     // mais rien d'écrit sur le disque (défauts)
+        Assert.Equal(1.5, pm.LastApplied?.Speed); // appliqué aux players à chaud
+        Assert.Equal(1.0, Settings.Load().Speed); // mais rien d'écrit sur le disque (défauts)
     }
 
     [Fact]

@@ -10,15 +10,6 @@ public class Settings
     public bool AutoStart { get; set; } = true;
     public bool AutoPauseEnabled { get; set; } = true;
 
-    private int _volume = 100;
-    public int Volume
-    {
-        get => _volume;
-        set => _volume = value switch { < 0 => 0, > 100 => 100, _ => value };
-    }
-
-    public bool Muted { get; set; }
-
     private string _videoFit = "cover";
     public string VideoFit
     {

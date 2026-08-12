@@ -110,7 +110,6 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
         _settings = settings;
         foreach (var e in _entries)
         {
-            e.Player.ApplyVolume(settings.Volume, settings.Muted);
             e.Player.ApplyVideoFit(settings.VideoFit);
             e.Player.ApplyLoop(settings.Loop);
             e.Player.ApplySpeed(settings.Speed);

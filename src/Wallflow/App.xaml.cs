@@ -1,3 +1,6 @@
+using System.Drawing;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using H.NotifyIcon;
 
@@ -5,11 +8,18 @@ namespace Wallflow;
 
 public partial class App : Application
 {
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
+    private static readonly Icon BaseTrayIcon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)!;
+
     private Mutex? _mutex;
     private EventWaitHandle? _showSignal;
     private AppService? _service;
     private TaskbarIcon? _tray;
     private MainWindow? _window;
+    private bool? _lastTrayPaused;
+    private string? _lastTrayTooltip;
 
     private void OnStartup(object sender, StartupEventArgs e)
     {
@@ -43,51 +53,44 @@ public partial class App : Application
         var pause = new System.Windows.Controls.MenuItem { Header = "Pause", IsCheckable = true };
         pause.Click += (_, _) => _service!.ManualPause = pause.IsChecked;
 
-        var mute = new System.Windows.Controls.MenuItem { Header = "Muet", IsCheckable = true };
-        mute.Click += (_, _) =>
-        {
-            _service!.Settings.Muted = mute.IsChecked;
-            _service.ApplyPlaybackSettings();
-        };
-
-        var vol25 = new System.Windows.Controls.MenuItem { Header = "25%" };
-        vol25.Click += (_, _) => SetTrayVolume(25);
-        var vol50 = new System.Windows.Controls.MenuItem { Header = "50%" };
-        vol50.Click += (_, _) => SetTrayVolume(50);
-        var vol75 = new System.Windows.Controls.MenuItem { Header = "75%" };
-        vol75.Click += (_, _) => SetTrayVolume(75);
-        var vol100 = new System.Windows.Controls.MenuItem { Header = "100%" };
-        vol100.Click += (_, _) => SetTrayVolume(100);
-
-        var volume = new System.Windows.Controls.MenuItem
-        {
-            Header = "Volume",
-            Items = { mute, new System.Windows.Controls.Separator(), vol25, vol50, vol75, vol100 },
-        };
-
         var remove = new System.Windows.Controls.MenuItem { Header = "Retirer le fond d'écran" };
         remove.Click += (_, _) => _service!.RemoveWallpaper();
 
         var quit = new System.Windows.Controls.MenuItem { Header = "Quitter" };
         quit.Click += (_, _) => Shutdown();
 
+        var tray = new TaskbarIcon
+        {
+            ContextMenu = new System.Windows.Controls.ContextMenu
+            {
+                Items = { open, pause, remove, new System.Windows.Controls.Separator(), quit },
+            },
+        };
+
         void Sync()
         {
-            pause.IsChecked = _service!.ManualPause;
-            mute.IsChecked = _service.Settings.Muted;
-            volume.Header = $"Volume : {_service.Settings.Volume}%";
+            var paused = _service!.ManualPause;
+            pause.IsChecked = paused;
+
+            if (paused != _lastTrayPaused)
+            {
+                var (icon, hIcon) = BuildStateIcon(paused);
+                tray.Icon = icon; // H.NotifyIcon dispose l'ancien Icon assigné (OnIconChanged)
+                DestroyIcon(hIcon); // Icon.FromHandle ne possède pas hIcon (doc MS) — à libérer nous-mêmes
+                _lastTrayPaused = paused;
+            }
+
+            var tooltip = _service.ActiveWallpaper is { } path ? Path.GetFileName(path) : "Wallflow";
+            if (tooltip.Length > 127) tooltip = tooltip[..127]; // limite dure szTip (NOTIFYICONDATAW)
+            if (tooltip != _lastTrayTooltip)
+            {
+                tray.ToolTipText = tooltip;
+                _lastTrayTooltip = tooltip;
+            }
         }
         _service!.StateChanged += () => Dispatcher.Invoke(Sync);
         Sync(); // état initial depuis settings.json, pas les défauts des MenuItem
 
-        var tray = new TaskbarIcon
-        {
-            ToolTipText = "Wallflow",
-            // HICON réel possédé par l'exe : SystemIcons.Application (handle partagé de l'OS)
-            // ne s'affichait pas de façon fiable dans le tray via Shell_NotifyIcon.
-            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!),
-            ContextMenu = new System.Windows.Controls.ContextMenu { Items = { open, pause, volume, remove, quit } },
-        };
         tray.TrayLeftMouseUp += (_, _) => ShowWindow();
         // efficiency mode désactivé : inutile pour une app always-on et suspecté d'empêcher
         // l'affichage de l'icône sur certaines versions de Windows 10.
@@ -95,11 +98,38 @@ public partial class App : Application
         return tray;
     }
 
-    private void SetTrayVolume(int vol)
+    // Badge lecture/pause dessiné en mémoire par-dessus l'icône de l'exe (pas d'asset .ico à
+    // maintenir). GetHicon() ne transfère pas la possession du handle à Icon.FromHandle (Remarks
+    // MS Learn) : DestroyIcon explicite obligatoire côté appelant après assignation à tray.Icon,
+    // sinon fuite GDI à chaque toggle (voir docs/research/tray-icon-state-tooltip.md §2).
+    private static (Icon Icon, IntPtr HIcon) BuildStateIcon(bool paused)
     {
-        _service!.Settings.Volume = vol;
-        _service.Settings.Muted = false;
-        _service.ApplyPlaybackSettings();
+        var size = BaseTrayIcon.Width;
+        using var bmp = new Bitmap(size, size);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.DrawIcon(BaseTrayIcon, new Rectangle(0, 0, size, size));
+            var badge = new Rectangle(size / 2, size / 2, size / 2, size / 2);
+            g.FillEllipse(Brushes.White, badge);
+            var bar = Math.Max(1, badge.Width / 5);
+            if (paused)
+            {
+                g.FillRectangle(Brushes.Black, badge.X + bar, badge.Y + bar, bar, badge.Height - 2 * bar);
+                g.FillRectangle(Brushes.Black, badge.Right - 2 * bar, badge.Y + bar, bar, badge.Height - 2 * bar);
+            }
+            else
+            {
+                System.Drawing.Point[] triangle =
+                [
+                    new(badge.X + bar, badge.Y + bar),
+                    new(badge.X + bar, badge.Bottom - bar),
+                    new(badge.Right - bar, badge.Y + badge.Height / 2),
+                ];
+                g.FillPolygon(Brushes.Black, triangle);
+            }
+        }
+        var hIcon = bmp.GetHicon();
+        return (Icon.FromHandle(hIcon), hIcon);
     }
 
     private void ShowWindow()

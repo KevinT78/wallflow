@@ -26,6 +26,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Titres Vermillon (docs/design/vermillon-tokens.md) : police réelle embarquée, pas de fallback système -->
+    <None Remove="Fonts\ShipporiMincho-Bold.ttf" />
+    <Resource Include="Fonts\ShipporiMincho-Bold.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\lib\libmpv-2.dll" Link="libmpv-2.dll"
           CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\lib\libmpv-2.dll')" />
     <!-- ffmpeg ≥ 7.1 requis (décodage webp animé) — conversion GIF/webp → mp4 du cache -->

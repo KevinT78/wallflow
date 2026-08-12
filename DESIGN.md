@@ -18,7 +18,7 @@ Source de vérité produit. Tout écart doit être argumenté ici avant d'être 
 | Stack | .NET 8 + WPF, libmpv comme moteur de lecture unique, P/Invoke pour WorkerW |
 | Multi-écran | Même wallpaper sur tous les écrans (une instance mpv par écran) |
 | Performance | Pause automatique si app en plein écran OU sur batterie/économie d'énergie. Non négociable. |
-| Lecture | Défauts : muet, cadrage cover, boucle infinie. **Écart (branche `feat/playback-settings`)** : réglages de lecture livrés — volume/muet, cadrage, vitesse par paliers, boucle (voir [docs/PRD-reglages-lecture.md](docs/PRD-reglages-lecture.md)). |
+| Lecture | Défauts : muet, cadrage cover, boucle infinie. **Écart (branche `feat/playback-settings`)** : réglages de lecture livrés — cadrage, vitesse par paliers, boucle (voir [docs/PRD-reglages-lecture.md](docs/PRD-reglages-lecture.md)). **Écart (carte `menu-tray-vermillon`, 2026-08-10)** : le son est retiré entièrement (UI fenêtre/tray + `Settings.Volume`/`Muted` + plumbing mpv) — l'app reste muette en dur, aucun contrôle de volume nulle part. |
 | UI | Icône tray + fenêtre minimale : drag & drop, grille des récents, bouton pause |
 | Démarrage | Auto-start via clé registre `Run` écrite par l'app (toggle), démarre dans le tray, restaure le dernier wallpaper |
 | Distribution | Zip portable seul, GitHub Releases. Pas d'installeur, pas de Store. |
@@ -40,6 +40,22 @@ tout seul sans repaint explicite) et n'offrait aucun moyen d'arrêter le fond sa
 n'est pas un écran de réglages : deux boutons d'action, dans la même fenêtre unique. Le compteur de
 boutons de la fenêtre principale passe de 0 (v1 initiale) à 2 ; jugé toujours « minimal » au sens du
 non-objectif (pas d'écran dédié, pas de settings avancés).
+
+### Écart : habillage Vermillon de la fenêtre (carte wayfinder `menu-tray-vermillon`, 2026-08-10)
+
+**Le premier bullet ci-dessus (Fluent/Windows 11 natif, accent discret) ne s'applique plus à la
+fenêtre principale.** Décision prise après grilling + prototype côte-à-côte (Option A « accent
+vermillon seul sur chrome Fluent/Mica » vs Option B « palette et police complètes ») : Option B
+retenue. La fenêtre adopte la palette du design system Vermillon (tokens extraits dans
+[docs/design/vermillon-tokens.md](docs/design/vermillon-tokens.md)) — fond crème `#F4F2F0`,
+encre `#0E0D12`, accent vermillon `#FF3B21`, secondaire lavande `#A99BC1`, ombres portées
+**dures** sans flou, coins quasi jamais arrondis, titre en serif éditoriale (`Shippori Mincho`,
+à embarquer comme police réelle en implémentation). Wpf.Ui reste la lib de composants sous-jacente
+(pas de nouvelle dépendance), mais son thème Fluent/Mica par défaut est remplacé par ces tokens.
+
+**Le tray n'est pas concerné** : il reste un `ContextMenu` Win32 natif, inchangé visuellement —
+seuls ses items sont réorganisés (voir carte). Traçabilité complète (grilling, prototype, ticket
+de décision) : `.scratch/menu-tray-vermillon/`. Pas encore implémenté à la date de cet écart.
 
 ## Refonte de la fenêtre (session de grilling 2026-07-19)
 
@@ -68,8 +84,11 @@ un wallpaper » ; la grille occupe tout l'espace.
 | Contrôle | Comportement |
 |---|---|
 | Play/Pause | Bouton icône, reflète et pilote la pause manuelle |
-| Volume | Icône → flyout : slider + % + toggle Muet |
 | ⚙ Réglages | Icône → flyout compact (pas un menu) : cadrage (segmented Cover/Fit/Fill), vitesse (segmented 0.5×–2×), boucle (toggle), démarrer avec Windows (toggle), séparateur, « Retirer le fond d'écran », « Quitter » |
+
+**Écart (carte `menu-tray-vermillon`, 2026-08-10)** : le contrôle Volume est retiré — plus de son
+nulle part dans l'app (voir table des décisions figées, ligne Lecture). La barre du bas passe de 3
+à 2 contrôles.
 
 ### Drag & drop
 

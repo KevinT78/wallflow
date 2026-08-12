@@ -179,12 +179,6 @@ public sealed class MpvPlayer : IDisposable
 
     public void Resume() => mpv_set_property_string(_ctx, "pause", "no");
 
-    public void ApplyVolume(int vol, bool muted)
-    {
-        mpv_set_property_string(_ctx, "volume", Math.Clamp(vol, 0, 100).ToString());
-        mpv_set_property_string(_ctx, "mute", muted ? "yes" : "no");
-    }
-
     // mpv n'a pas de propriété « video-fit » : le cadrage se pilote via panscan + keepaspect.
     public void ApplyVideoFit(string fit)
     {
