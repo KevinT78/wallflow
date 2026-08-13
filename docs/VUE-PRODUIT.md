@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `eca8be4` (2026-08-13)._
-<!-- doc-provenance: commit=eca8be4 generated=2026-08-13 -->
+> _Généré au commit `546b35e` (2026-08-13)._
+<!-- doc-provenance: commit=546b35e generated=2026-08-13 -->
 
 ## En une phrase
 
@@ -121,6 +121,9 @@ qu'il réapparaisse intact.
 Cas particulier : si le fond natif de Windows est réglé en **diaporama** (un dossier d'images qui
 défilent), Wallflow le met en pause tant qu'un wallpaper est actif — sinon l'image du diaporama
 réapparaîtrait brièvement à chaque changement, par-dessus l'animation (un clignotement gênant).
+La pause **tient dans la durée** : si quelque chose relance le diaporama en cours de route (le
+panneau Personnalisation de Windows, une autre application), Wallflow s'en aperçoit et le remet en
+pause — le clignotement ne revient pas sans qu'on ait à redémarrer l'application.
 Le diaporama est remis exactement comme il était — mêmes images, même intervalle — dès qu'on retire
 le fond ou qu'on quitte.
 

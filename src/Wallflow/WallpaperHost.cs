@@ -32,6 +32,12 @@ public static class WallpaperHost
     [DllImport("user32.dll")]
     private static extern bool DestroyWindow(IntPtr hwnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr hwnd);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SystemParametersInfo(uint action, uint param, string? vparam, uint winIni);
 
@@ -75,11 +81,39 @@ public static class WallpaperHost
     /// window"). Se fier au seul code retour de CreateWindowEx ne détecte donc pas ce cas.</summary>
     public static IntPtr CreateHostFor(Screen screen)
     {
-        Init();
-        var hwnd = TryCreateHost(screen);
-        if (hwnd == IntPtr.Zero)
-            throw new InvalidOperationException($"CreateWindowEx a échoué (Win32 {Marshal.GetLastWin32Error()})");
-        return hwnd;
+        // Explorer réémet le WorkerW de façon ASYNCHRONE après Enable() ou SPI_SETDESKWALLPAPER.
+        // Un host créé dans le WorkerW sortant est donc détruit avec lui quelques ms plus tard :
+        // CreateWindowEx réussit, aucune exception, et mpv hérite d'un wid mort — d'où
+        // « vo/gpu-next/win32: unable to create window » et un bureau noir. Le succès de
+        // CreateWindowEx ne prouve rien ; seule la survie du host après stabilisation le prouve.
+        // Coût : ShellSettleMs par tentative sur le thread appelant (UI), donc ~120 ms au cas
+        // nominal et ~360 ms au pire. Attente assumée : la réémission est asynchrone et sans
+        // signal exploitable, et l'alternative au pire cas est un bureau noir définitif.
+        for (var attempt = 1; attempt <= HostCreationAttempts; attempt++)
+        {
+            Init();
+            var hwnd = TryCreateHost(screen);
+            if (hwnd != IntPtr.Zero && SurvivesShellSettle(hwnd))
+                return hwnd;
+
+            if (hwnd != IntPtr.Zero) DestroyWindow(hwnd); // host mort-né : ne pas le laisser fuir
+            Log.Warn($"Host détruit par une réémission du WorkerW — nouvelle tentative ({attempt}/{HostCreationAttempts})");
+        }
+        throw new InvalidOperationException(
+            $"Host introuvable après {HostCreationAttempts} tentatives (Win32 {Marshal.GetLastWin32Error()})");
+    }
+
+    // 3 et pas 5 : chaque tentative gèle le thread UI de ShellSettleMs, et le pire cas observé en
+    // réel (Retirer → Remettre, trois réémissions enchaînées) s'est résolu en UNE seule reprise.
+    private const int HostCreationAttempts = 3;
+    private const int ShellSettleMs = 120;
+
+    /// <summary>Laisse Explorer finir sa réémission, puis vérifie que le host ET son WorkerW parent
+    /// sont toujours vivants. Coût : une seule attente courte par écran à l'Apply.</summary>
+    private static bool SurvivesShellSettle(IntPtr hwnd)
+    {
+        Thread.Sleep(ShellSettleMs);
+        return IsWindow(hwnd) && IsWindow(_workerW) && GetParent(hwnd) == _workerW;
     }
 
     private static IntPtr TryCreateHost(Screen screen)
@@ -141,6 +175,30 @@ public static class WallpaperHost
         catch (Exception ex) { Log.Warn($"PauseSlideshowIfActive : coupure du défilement échouée ({ex.Message})"); /* best-effort : ni capture ni coupure plutôt qu'un Apply cassé */ }
 
         return snapshot;
+    }
+
+    /// <summary>
+    /// Recoupe le défilement s'il a été ré-armé depuis la coupure initiale (panneau
+    /// Personnalisation, app tierce…). No-op s'il est déjà coupé. Vrai s'il a fallu recouper.
+    /// </summary>
+    // NOTE (vérifié live 2026-08-13, Win10 19045) : ici on lit DSS_ENABLED, pas DSS_SLIDESHOW.
+    // Contrairement au bit SLIDESHOW (que seule l'app Réglages lève — cf. NOTE de
+    // PauseSlideshowIfActive), DSS_ENABLED suit fidèlement Enable() : mesuré 0x3 → 0x0 sur
+    // Enable(false), tenu 4 minutes / 4 ticks, puis 0x0 → 0x3 sur Enable(true). C'est donc un
+    // signal fiable pour « quelqu'un a relancé le diaporama ». La détection du MODE diaporama
+    // reste sur BackgroundType (IsSlideshowActive), inchangée.
+    public static bool EnsureSlideshowPaused()
+    {
+        if (!IsSlideshowActive()) return false;
+        try
+        {
+            var dw = CreateDesktopWallpaper();
+            dw.GetStatus(out var status);
+            if ((status & DESKTOP_SLIDESHOW_STATE.DSS_ENABLED) == 0) return false; // déjà coupé : cas nominal
+            dw.Enable(false);
+            return true;
+        }
+        catch (Exception ex) { Log.Warn($"EnsureSlideshowPaused échoué ({ex.Message})"); return false; }
     }
 
     /// <summary>Relance le diaporama Windows à l'identique depuis une config capturée.</summary>

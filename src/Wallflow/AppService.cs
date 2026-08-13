@@ -72,6 +72,19 @@ public sealed class AppService
                 OnUiThread(_players.ResyncLight);
         };
 
+        // Le diaporama coupé à l'Apply peut être ré-armé en cours de session (panneau
+        // Personnalisation, app tierce). La coupure elle-même tient — mesuré 4 min / 4 ticks —
+        // mais rien ne la repose une fois défaite, et le flash périodique revient alors jusqu'au
+        // prochain redémarrage de l'app. Enable() écrit dans Control Panel\Desktop, ce que cet
+        // événement signale (vérifié live 2026-08-13 : category=Desktop à chaque Enable) — d'où un
+        // garde-fou événementiel plutôt qu'un polling. Le tick du diaporama, lui, reste indétectable
+        // (cf. PRD) : on ne détecte pas le repaint, on maintient sa cause coupée.
+        SystemEvents.UserPreferenceChanged += (_, e) =>
+        {
+            if (e.Category == UserPreferenceCategory.Desktop)
+                OnUiThread(EnsureSlideshowStillPaused);
+        };
+
         // Mémorise les settings dans le manager avant le premier Load, pour qu'il
         // les applique aux players qu'il créera (sinon défauts mpv : muet, 1x, cover).
         _players.ApplySettings(Settings);
@@ -108,8 +121,14 @@ public sealed class AppService
         // Transition « aucun Wallpaper actif → actif » : coupe le diaporama Windows et garde sa
         // config. Un simple changement d'image (Wallpaper déjà actif) ne redéclenche pas de capture.
         // Détection par état runtime, pas par Settings.LastWallpaper persisté (voir _wallpaperActive).
+        // `?? l'existant` et pas une affectation sèche : PauseSlideshowIfActive renvoie null aussi
+        // quand elle a COUPÉ le diaporama mais raté sa capture (GetSlideshow en échec, cf. son
+        // try/catch). Écraser détruirait alors un snapshot persisté encore bon, et le diaporama
+        // serait coupé sans plus aucune trace pour le relancer — la résilience au crash de
+        // l'issue 008 défaite en silence. Contrepartie assumée : si l'Utilisateur est passé à un
+        // fond fixe entre-temps, l'ancien snapshot survit et sera restauré au prochain Retirer.
         if (!_wallpaperActive)
-            Settings.SlideshowSnapshot = _players.PauseSlideshowIfActive();
+            Settings.SlideshowSnapshot = _players.PauseSlideshowIfActive() ?? Settings.SlideshowSnapshot;
 
         // Joue la version convertie si elle existe déjà ; sinon l'original tout de suite,
         // et bascule à chaud vers le mp4 dès que la conversion aboutit (si toujours actif).
@@ -139,12 +158,36 @@ public sealed class AppService
     /// <summary>« Retirer le fond d'écran » : rend le bureau natif, app vivante dans le tray. Ré-applicable via Récents.</summary>
     public void RemoveWallpaper()
     {
+        // Journalisé au même titre qu'Apply : sans ça un cycle Retirer→Remettre est invisible dans
+        // le log (seul l'Apply apparaît), alors que c'est le chemin qui enchaîne trois réémissions
+        // du WorkerW et sur lequel les écrans noirs se produisent.
+        Log.Info("Retirer le fond d'écran");
         ResumeCapturedSlideshow();
         Settings.LastWallpaper = null;
         _wallpaperActive = false;
         _players.Clear();
         Settings.Save();
         StateChanged?.Invoke();
+    }
+
+    /// <summary>Un réglage du bureau a changé : si Wallflow a coupé un diaporama et affiche
+    /// toujours un Wallpaper, le recoupe au cas où il aurait été ré-armé. No-op si l'Utilisateur
+    /// n'avait pas de diaporama (rien n'a été capturé) ou si Wallflow n'affiche plus rien — dans
+    /// ce cas le diaporama lui appartient de nouveau et on n'y touche pas. Notre propre
+    /// Enable(false) relève l'événement : le second passage voit le diaporama déjà coupé et
+    /// s'arrête, pas de boucle.</summary>
+    public void EnsureSlideshowStillPaused()
+    {
+        if (!_wallpaperActive || Settings.SlideshowSnapshot is null) return;
+        if (!_players.EnsureSlideshowPaused()) return;
+
+        Log.Info("Diaporama Windows ré-armé pendant la session — recoupé");
+        // Enable() fait réémettre le WorkerW par Explorer (cf. CreateHostFor) : les fenêtres hôtes
+        // en place deviennent orphelines et plus rien n'est peint — écran noir. À l'Apply le
+        // problème ne se pose pas, la coupure y précède la création des hôtes ; ici elle la suit,
+        // donc il faut recréer. Resync (pas ResyncLight) : c'est le HOST Win32 qu'Explorer a
+        // détruit, pas seulement le contexte mpv.
+        _players.Resync();
     }
 
     /// <summary>Restaure le diaporama Windows capturé (issu du Settings persisté, donc résilient au crash), puis l'oublie. No-op sinon.</summary>
@@ -248,6 +291,7 @@ public sealed class AppService
 
     public void Shutdown()
     {
+        Log.Info("Quitter");
         ResumeCapturedSlideshow();
         _wallpaperActive = false;
         _players.Dispose();

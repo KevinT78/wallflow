@@ -21,4 +21,8 @@ public interface IPlayerManager
 
     /// <summary>Relance le diaporama Windows à partir d'une config capturée.</summary>
     void ResumeSlideshow(SlideshowSnapshot snapshot);
+
+    /// <summary>Recoupe le diaporama Windows s'il a été ré-armé depuis la coupure initiale.
+    /// Vrai s'il a fallu recouper (donc si quelqu'un l'avait relancé), faux si déjà coupé.</summary>
+    bool EnsureSlideshowPaused();
 }

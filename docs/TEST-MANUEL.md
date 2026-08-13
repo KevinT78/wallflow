@@ -199,6 +199,48 @@ Get-Content "$env:LOCALAPPDATA\Wallflow\settings.json" | Select-String "Recents"
 
 ---
 
+## 7bis. Diaporama ré-armé en cours de session
+
+**Objectif** : si un tiers relance le diaporama pendant qu'un wallpaper est actif, Wallflow le
+recoupe — sans quoi le flicker périodique revient et ne repart plus jusqu'au redémarrage de l'app.
+C'est le bug diagnostiqué le 2026-08-13 (la coupure tient, mais rien ne la reposait une fois défaite).
+
+**Étapes** :
+1. Fond natif en **diaporama**, intervalle **1 minute** (comme au test 7).
+2. Appliquer un wallpaper Wallflow ; vérifier que le défilement est coupé (statut `0x0` ci-dessous).
+3. Ré-armer le diaporama depuis l'extérieur de Wallflow — le plus simple : Paramètres →
+   Personnalisation → Arrière-plan, repasser sur **Diaporama**.
+4. Attendre ~2 s, puis relire le statut.
+
+**Résultat attendu** :
+- Étape 4 : statut revenu à `0x0` **tout seul**, et la ligne
+  `Diaporama Windows ré-armé pendant la session — recoupé` présente dans
+  `%LOCALAPPDATA%\Wallflow\logs\wallflow-<date>.log`.
+- Attendre ensuite > 1 min : aucune image du diaporama n'apparaît par-dessus le wallpaper.
+
+**Vérification technique** — lecture du statut réel (`DSS_ENABLED` = bit 0) :
+```powershell
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+[ComImport, Guid("B92B56A9-8B55-4E14-9A89-0199BBB6F93B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IDW {
+  void S1(string a, string b); void S2(string a, out string b); void S3(uint a, out string b);
+  void S4(out uint a); void S5(string a, out long b); void S6(uint a); void S7(out uint a);
+  void S8(int a); void S9(out int a); void SA(IntPtr a); void SB(out IntPtr a);
+  void SC(int a, uint b); void SD(out int a, out uint b); void SE(string a, int b);
+  void GetStatus(out int s); void Enable([MarshalAs(UnmanagedType.Bool)] bool e); }
+public static class Q { public static int St() { int s;
+  ((IDW)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD")))).GetStatus(out s);
+  return s; } }
+'@
+'0x{0:X}' -f [Q]::St()
+```
+> Le cast COM doit se faire **en C#** : rendu à PowerShell, l'objet retombe en liaison tardive
+> (`System.__ComObject`), `GetStatus` devient introuvable et la lecture renvoie silencieusement `0` —
+> soit exactement l'apparence d'un diaporama coupé. Piège vécu pendant le diagnostic.
+
+---
+
 ## 8. Empaquetage
 
 **Objectif** : le script produit le zip portable avec les binaires natifs.

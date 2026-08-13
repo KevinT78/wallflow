@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `eca8be4` (2026-08-13)._
-<!-- doc-provenance: commit=eca8be4 generated=2026-08-13 -->
+> _Généré au commit `546b35e` (2026-08-13)._
+<!-- doc-provenance: commit=546b35e generated=2026-08-13 -->
 
 ## Stack
 
@@ -68,6 +68,7 @@ classDiagram
         Dispose()
         PauseSlideshowIfActive() SlideshowSnapshot?
         ResumeSlideshow(snapshot)
+        EnsureSlideshowPaused() bool
     }
     class AppService {
         Settings settings
@@ -82,6 +83,7 @@ classDiagram
         RemoveFromRecents(path)
         SetAutoStart(bool)
         ResumeCapturedSlideshow()
+        EnsureSlideshowStillPaused()
         static GridKey(recents, active)
     }
     class PlayerManager {
@@ -100,10 +102,11 @@ classDiagram
         Dispose()  // join(2 s) du thread d'événements sur SHUTDOWN
     }
     class WallpaperHost {
-        CreateHostFor(screen) IntPtr
+        CreateHostFor(screen) IntPtr  // retry tant que le host ne survit pas au shell
         RestoreDesktop()
         PauseSlideshowIfActive() SlideshowSnapshot?
         ResumeSlideshow(snapshot)
+        EnsureSlideshowPaused() bool
     }
     class SlideshowSnapshot {
         <<record>>
@@ -432,6 +435,8 @@ Deux couches, séparation nette :
     la capture échoue** : l'objectif premier est de stopper le flicker, pas de capturer.
   - `ResumeSlideshow(snapshot)` : `SHCreateItemFromParsingName` + `SHCreateShellItemArrayFromShellItem`
     → `SetSlideshow` + `SetSlideshowOptions` + `Enable(true)`.
+  - `EnsureSlideshowPaused()` : relit `GetStatus()` et recoupe si le bit `DSS_ENABLED` est revenu.
+    No-op si déjà coupé, donc sans effet dans le cas nominal.
 - **Orchestration** dans `AppService` (testable via le seam `IPlayerManager`) : capture à la
   **transition détectée par un drapeau runtime `_wallpaperActive`** (un changement d'image d'un
   `Wallpaper` déjà actif ne recapture pas ; `Rebuild` non plus). Le drapeau vit en mémoire, jamais
@@ -442,7 +447,33 @@ Deux couches, séparation nette :
   recoupé). `RemoveWallpaper()` et `Shutdown()` appellent `ResumeCapturedSlideshow()` (restaure puis
   oublie). Le snapshot vit dans `Settings.SlideshowSnapshot`, **persisté dans settings.json**
   (issue 008, commit `3dbc384`) : après un crash, il survit et le diaporama est restauré au prochain
-  `Retirer le fond d'écran` ou `Quitter` — plus de config de diaporama perdue.
+  `Retirer le fond d'écran` ou `Quitter` — plus de config de diaporama perdue. La capture ne
+  **remplace** le snapshot persisté que si elle a réellement abouti (`?? l'existant`).
+  **Compromis assumé, à connaître** : `PauseSlideshowIfActive()` renvoie `null` dans deux cas
+  indiscernables depuis `AppService` — (a) il n'y avait rien à couper (fond non-diaporama),
+  (b) elle a **coupé** le diaporama mais raté sa capture (`GetSlideshow` en échec). Écraser dans le
+  cas (b) couperait le diaporama sans laisser de quoi le relancer, ce qui viderait l'issue 008 de
+  son sens ; le `??` protège donc (b) — mais il s'applique aussi à (a). Conséquence : un snapshot
+  hérité d'une session crashée survit à un `Apply` fait alors que l'Utilisateur est entre-temps
+  passé à un **fond fixe**, et sera restauré au prochain `Retirer le fond d'écran` — un réglage
+  qu'il avait délibérément abandonné. Priorité donnée à « ne jamais couper sans pouvoir restaurer »
+  (US6) plutôt qu'à « ne jamais ressusciter un réglage abandonné » (US3/US4). Distinguer (a) de (b)
+  demanderait d'élargir le seam `IPlayerManager` ; pas fait tant que le cas ne s'observe pas.
+- **Garde-fou de re-coupure** (2026-08-13) : la coupure initiale tient dans le temps, mais rien
+  n'empêchait un tiers de la défaire en cours de session — panneau Personnalisation, autre app.
+  Une fois défaite, plus rien ne la reposait et le flicker revenait jusqu'au prochain redémarrage de
+  l'app. `AppService` s'abonne donc à `SystemEvents.UserPreferenceChanged` et, sur
+  `UserPreferenceCategory.Desktop`, appelle `EnsureSlideshowStillPaused()` — qui recoupe seulement si
+  Wallflow affiche un `Wallpaper` **et** détient un snapshot (donc s'il avait bien coupé un diaporama
+  lui-même). Événementiel, pas de polling : `Enable()` écrit dans `Control Panel\Desktop`, et cet
+  événement le signale. Notre propre `Enable(false)` le relève aussi — le second passage voit le
+  diaporama déjà coupé et s'arrête, pas de boucle.
+  **Le `Resync()` qui suit la re-coupure n'est pas optionnel** : `Enable()` fait réémettre le WorkerW
+  par Explorer, donc les fenêtres hôtes en place deviennent orphelines et le bureau vire au **noir**.
+  À l'`Apply` le problème ne se pose pas (la coupure y précède la création des hôtes) ; ici elle la
+  suit. Vérifié en réel : après déclenchement, le host est recréé sous un WorkerW d'un **handle
+  différent** (`10095736` → `12387960`). C'est un `Resync()` complet et pas un `ResyncLight()` —
+  c'est le host Win32 qu'Explorer a détruit, pas seulement le contexte mpv.
 
 > ⚠️ **Écarts réel vs intention (vérifiés live, Win10 19045)** — le PRD prévoyait de couper via
 > l'effet de bord de `SetWallpaper(image courante)` et de détecter via `GetStatus() == DSS_ENABLED`.
@@ -453,6 +484,17 @@ Deux couches, séparation nette :
 > (`…\Explorer\Wallpapers`), coupure/reprise par `Enable(false)`/`Enable(true)` — round-trip vérifié
 > `0x3 → 0x0 → 0x3`, `RestoreDesktop()` (SPI_SETDESKWALLPAPER) sur le chemin de sortie **ne clobbe
 > pas** le diaporama relancé (les deux couches sont bien indépendantes).
+>
+> **Nuance ajoutée le 2026-08-13** : « `GetStatus` n'est pas fiable » vaut pour le bit
+> `DSS_SLIDESHOW` (posé seulement par l'app Réglages) — **pas** pour `DSS_ENABLED`, qui suit
+> fidèlement `Enable()`. Mesuré : `0x3 → 0x0` sur `Enable(false)`, tenu 4 min / 4 ticks, puis
+> `0x0 → 0x3` sur `Enable(true)`. C'est ce qui rend `EnsureSlideshowPaused()` possible. La
+> **détection du mode** diaporama reste sur `BackgroundType == 2`, inchangée.
+>
+> Également vérifié ce jour-là : `SystemEvents.UserPreferenceChanged` **se déclenche**
+> (`Category=Desktop`) sur `Enable(true)`/`Enable(false)`. Cela ne contredit pas le PRD, qui avait
+> écarté cet événement pour détecter le **tick** du diaporama — le tick reste indétectable ; c'est
+> le **changement de réglage** qui est signalé.
 
 ## Surveillance d'activité
 

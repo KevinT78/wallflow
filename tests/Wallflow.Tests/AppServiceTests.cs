@@ -204,6 +204,120 @@ public class AppServiceTests
     }
 
     [Fact]
+    public void SlideshowRearmedDuringSession_IsCutAgain()
+    {
+        // La coupure est posée une seule fois, à la transition aucun→actif. Elle tient (vérifié
+        // live : Enable(false) a tenu 4 ticks), mais rien n'empêche un tiers de la défaire —
+        // panneau Personnalisation, autre app. Sans re-coupure, le flash périodique revient et
+        // ne repart plus jusqu'au prochain redémarrage de l'app.
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+        svc.Apply(iso.CreateTempMedia(".gif"));
+
+        svc.EnsureSlideshowStillPaused(); // un réglage du bureau a changé
+
+        Assert.Equal(1, pm.EnsureSlideshowPausedCalls);
+    }
+
+    [Fact]
+    public void SlideshowRecut_RebuildsTheHosts()
+    {
+        // Enable() fait réémettre le WorkerW par Explorer : sans Resync derrière, les fenêtres hôtes
+        // sont orphelines et le bureau vire au noir — le garde-fou tuerait le wallpaper qu'il protège.
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap, RecutReturns = true };
+        var svc = new AppService(pm);
+        svc.Apply(iso.CreateTempMedia(".gif"));
+
+        svc.EnsureSlideshowStillPaused();
+
+        Assert.Equal(1, pm.ResyncCalls);
+    }
+
+    [Fact]
+    public void SlideshowAlreadyCut_DoesNotRebuildTheHosts()
+    {
+        // Cas nominal : rien à recouper, donc aucun WorkerW recréé — pas de Resync gratuit,
+        // qui coûterait un teardown complet des players à chaque réglage du bureau modifié.
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap, RecutReturns = false };
+        var svc = new AppService(pm);
+        svc.Apply(iso.CreateTempMedia(".gif"));
+
+        svc.EnsureSlideshowStillPaused();
+
+        Assert.Equal(0, pm.ResyncCalls);
+    }
+
+    [Fact]
+    public void SlideshowRearmed_AfterRemoveWallpaper_IsLeftAlone()
+    {
+        // Plus de Wallpaper affiché : le diaporama appartient de nouveau à l'Utilisateur.
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = Snap };
+        var svc = new AppService(pm);
+        svc.Apply(iso.CreateTempMedia(".gif"));
+        svc.RemoveWallpaper();
+
+        svc.EnsureSlideshowStillPaused();
+
+        Assert.Equal(0, pm.EnsureSlideshowPausedCalls);
+    }
+
+    [Fact]
+    public void SlideshowRearmed_WhenNoneWasEverCaptured_IsLeftAlone()
+    {
+        // Fond Windows non-diaporama à l'Apply : Wallflow n'a rien coupé, il ne doit rien couper
+        // — le no-op de la User Story 5 vaut aussi pour le garde-fou.
+        using var iso = new TestIsolation();
+        var pm = new FakePlayerManager { SlideshowToReturn = null };
+        var svc = new AppService(pm);
+        svc.Apply(iso.CreateTempMedia(".gif"));
+
+        svc.EnsureSlideshowStillPaused();
+
+        Assert.Equal(0, pm.EnsureSlideshowPausedCalls);
+    }
+
+    [Fact]
+    public void Apply_WithFailedCapture_KeepsThePersistedSnapshot()
+    {
+        // PauseSlideshowIfActive renvoie null dans deux cas indiscernables : rien à couper, ou
+        // coupé mais capture ratée. Dans le second, écraser le snapshot persisté couperait le
+        // diaporama sans laisser de quoi le relancer — issue 008 défaite en silence.
+        using var iso = new TestIsolation();
+        var file = iso.CreateTempMedia(".gif");
+        new Settings { LastWallpaper = file, SlideshowSnapshot = Snap }.Save(); // session précédente crashée
+        var pm = new FakePlayerManager { SlideshowToReturn = null };            // capture ratée
+
+        var svc = new AppService(pm); // le ctor restaure file → transition aucun→actif
+
+        Assert.Equal(Snap, svc.Settings.SlideshowSnapshot);
+        Assert.Equal(Snap, Settings.Load().SlideshowSnapshot); // et toujours persisté
+
+        svc.RemoveWallpaper();
+        Assert.Equal(1, pm.ResumeSlideshowCalls); // le diaporama de l'Utilisateur repart quand même
+        Assert.Equal(Snap, pm.LastResumed);
+    }
+
+    [Fact]
+    public void Apply_WithFreshCapture_ReplacesThePersistedSnapshot()
+    {
+        // L'inverse : une capture réelle doit bien remplacer l'ancienne, sinon un snapshot périmé
+        // survivrait indéfiniment.
+        var newer = new SlideshowSnapshot(@"C:\Users\Me\Pictures\Autres", 900000, false);
+        using var iso = new TestIsolation();
+        var file = iso.CreateTempMedia(".gif");
+        new Settings { LastWallpaper = file, SlideshowSnapshot = Snap }.Save();
+        var pm = new FakePlayerManager { SlideshowToReturn = newer };
+
+        var svc = new AppService(pm);
+
+        Assert.Equal(newer, svc.Settings.SlideshowSnapshot);
+    }
+
+    [Fact]
     public void RemoveWallpaper_RestoresCapturedSlideshow()
     {
         using var iso = new TestIsolation();
@@ -416,6 +530,9 @@ public class AppServiceTests
         public SlideshowSnapshot? SlideshowToReturn { get; set; }
         public int PauseSlideshowCalls { get; private set; }
         public int ResumeSlideshowCalls { get; private set; }
+        public int EnsureSlideshowPausedCalls { get; private set; }
+        public int ResyncCalls { get; private set; }
+        public bool RecutReturns { get; set; }
         public SlideshowSnapshot? LastResumed { get; private set; }
 
         public void ApplySettings(Settings settings) => LastApplied = settings;
@@ -423,11 +540,12 @@ public class AppServiceTests
         public void PauseAll() { }
         public void ResumeAll() { }
         public void Rebuild() { }
-        public void Resync() { }
+        public void Resync() => ResyncCalls++;
         public void ResyncLight() { }
         public void Clear() => Cleared = true;
         public void Dispose() { }
         public SlideshowSnapshot? PauseSlideshowIfActive() { PauseSlideshowCalls++; return SlideshowToReturn; }
         public void ResumeSlideshow(SlideshowSnapshot snapshot) { ResumeSlideshowCalls++; LastResumed = snapshot; }
+        public bool EnsureSlideshowPaused() { EnsureSlideshowPausedCalls++; return RecutReturns; }
     }
 }

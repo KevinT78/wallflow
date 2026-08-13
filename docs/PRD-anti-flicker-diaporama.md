@@ -120,11 +120,22 @@ même dans une session ultérieure — restaure quand même le diaporama d'origi
 
 ## Out of Scope
 
+- Distinguer « aucun diaporama à couper » de « diaporama coupé mais capture ratée » — les deux
+  remontent `null` depuis `PauseSlideshowIfActive()`. Depuis le 2026-08-13, un snapshot persisté
+  n'est plus écrasé par un `null` (sans quoi une capture ratée coupe le diaporama sans laisser de
+  quoi le relancer, US6 défaite en silence). Contrepartie : si l'Utilisateur est passé à un fond
+  fixe entre une session crashée et la suivante, son ancien diaporama sera quand même restauré au
+  prochain `Retirer le fond d'écran` — tension assumée avec US3/US4. Lever l'ambiguïté demanderait
+  d'élargir le seam `IPlayerManager` ; non fait tant que le cas ne s'observe pas en réel.
 - Restaurer le mode Windows Spotlight (« Découvertes Windows ») — non documenté par Microsoft,
   distinct du diaporama classique couvert ici.
-- Réagir si l'Utilisateur réactive manuellement le diaporama pendant que Wallflow a déjà un
+- ~~Réagir si l'Utilisateur réactive manuellement le diaporama pendant que Wallflow a déjà un
   `Wallpaper` actif — la capture n'a lieu qu'une fois, à la transition initiale ; pas de re-coupure
-  continue.
+  continue.~~ **Remis dans le scope le 2026-08-13** : c'est ce trou qui a fait revenir le flicker en
+  session. La capture, elle, reste unique (à la transition initiale) — mais la **coupure** est
+  désormais maintenue tant qu'un `Wallpaper` est actif, via un garde-fou branché sur
+  `SystemEvents.UserPreferenceChanged`. Voir « Garde-fou de re-coupure » dans
+  ARCHITECTURE-TECHNIQUE.md.
 - Garantir la restauration si l'app est désinstallée, ou tuée sans qu'un `Retirer le fond
   d'écran`/`Quitter` propre n'ait jamais lieu par la suite — limite acceptée, cf. Further Notes.
 - Réglage du diaporama par écran — un seul diaporama global coupé/restauré, cohérent avec un seul
