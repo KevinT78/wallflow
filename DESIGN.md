@@ -115,11 +115,32 @@ nulle part dans l'app (voir table des décisions figées, ligne Lecture). La bar
 - **Navigation multi-vues** (page Réglages séparée) : 6 réglages ne justifient pas une
   navigation ; le flyout suffit.
 
-## Performance (session de grilling 2026-07-19)
+## Performance (grilling 2026-07-19, confirmé sur mesure Release 2026-08-17)
 
-Budget figé : **< 3 % CPU** quand un wallpaper joue (contenu réel de l'utilisateur : GIF/webp
-animés), machine de référence i5-6300U + HD 520. Baseline reproductible :
-`tools/measure-baseline.ps1` (résultats dans `tools/baseline-results.csv`).
+Budget **< 3 % CPU** quand un wallpaper joue, confirmé — pas révisé — après re-mesure en
+Release sur le binaire réel (commit `806bb29`, protocole figé en
+[#24](https://github.com/KevinT78/wallflow/issues/24), chiffres bruts dans
+`tools/baseline-results.csv`, méthode dans
+[#25](https://github.com/KevinT78/wallflow/issues/25)). Tous les scénarios mesurés — y compris le
+mp4 1080p, jugé perdu d'avance lors du grilling initial — tiennent le budget avec une marge large
+(médiane 0,37-0,51 % CPU en régime ; pic isolé 7,29 % sur `image-fixe-fenetre-ouverte`, jamais en
+régime). Machine de référence : i5-6300U + HD 520, portable, **secteur uniquement** (l'app se met
+en pause auto sur batterie, cf. Surveillance d'activité — la consommation débranchée est nulle par
+construction).
+
+**Critère d'ancrage** ([#26](https://github.com/KevinT78/wallflow/issues/26)) : le % CPU/GPU n'est
+pas le critère de jugement au quotidien — personne n'ouvre le Gestionnaire des tâches par
+réflexe. Le critère qui compte : **pas de ventilateur qui s'emballe, pas de ralentissement
+perçu.** Le chiffre reste la preuve à produire en cas de doute (re-mesure via
+`tools/measure-baseline.ps1`), pas le déclencheur.
+
+**Le GPU n'est pas budgété — décision assumée, pas un oubli.** Le cache ffmpeg (ligne suivante)
+échange délibérément du CPU contre du GPU ; la re-mesure le confirme chiffré : 24-25 % GPU moyen
+en cache webp chaud, jusqu'à 51,61 % moyen sur mp4 1080p. Le critère observable ci-dessus couvre
+CPU et GPU ensemble (un GPU chargé chauffe aussi le ventilateur) — pas de second budget chiffré à
+maintenir en parallèle. Une réduction du coût GPU du mp4 1080p reste néanmoins visée, sans
+gêne ressentie ni seuil dépassé, par prudence sur un iGPU de portable : voir
+[#27](https://github.com/KevinT78/wallflow/issues/27).
 
 - **Bug corrigé (cause racine n°1)** : recréer un player mpv émet un `DisplaySettingsChanged`,
   que l'app retransformait en `Rebuild()` → boucle infinie à ~33 Hz (mp4 : 43 % CPU). Garde par
@@ -139,8 +160,6 @@ animés), machine de référence i5-6300U + HD 520. Baseline reproductible :
 - **Vignettes async** : la grille s'affiche immédiatement (placeholder = nom du fichier),
   le décodage shell (`IShellItemImageFactory`) part sur le thread pool et remplace le
   placeholder à l'arrivée — l'ouverture ne bloque plus sur les miniatures (cible < 200 ms).
-- Reste ouvert : budget < 3 % probablement inatteignable pour du mp4 1080p sur ce CPU
-  2 cœurs — à re-mesurer en Release avant d'assouplir.
 
 ## Points de vigilance connus
 
