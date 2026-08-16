@@ -493,8 +493,11 @@ tools/agent-proxy/logs/
 tools/*
 !tools/measure-baseline.ps1
 !tools/baseline-results.csv
+!tools/baseline-results-juillet-2026.csv
 !tools/package.ps1
 !tools/setup-binaries.sh
+!tools/bench-media/
+!tools/bench-media/*
 .claude
 
 # artefacts de planification/recherche (grilling, tickets scaffoldés, recherche à froid) —
