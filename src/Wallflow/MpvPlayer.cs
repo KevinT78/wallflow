@@ -5,7 +5,7 @@ namespace Wallflow;
 /// <summary>
 /// Enveloppe minimale de libmpv en mode embedding (option wid) : mpv rend directement
 /// dans le HWND hôte fourni par WallpaperHost. Défauts figés par DESIGN.md :
-/// boucle infinie, muet, cadrage cover, hwdec auto. Un player par écran.
+/// boucle infinie, muet, cadrage cover, hwdec auto, cscale bilinear (#27). Un player par écran.
 /// </summary>
 public sealed class MpvPlayer : IDisposable
 {
@@ -108,6 +108,12 @@ public sealed class MpvPlayer : IDisposable
         SetOption("mute", "yes");
         SetOption("panscan", "1.0");                 // cover : remplit l'écran, rogne les bords
         SetOption("hwdec", "auto");
+        // Chroma 4:2:0 -> 4:4:4 est reconstruite CHAQUE frame quelle que soit la résolution
+        // (vidéo 1:1 avec l'écran y compris) ; le filtre par défaut de gpu-next y est cher sur un
+        // iGPU faible (moteur 3D, pas le décodage matériel : hwdec=auto était déjà inchangé).
+        // Mesure officielle #27 (protocole #25, HD 520, mp4 1080p, tools/baseline-results.csv) :
+        // 51,61% -> 29,47% GPU moyen. vo=gpu (57,7%) et hwdec explicite (auto) écartés par mesure.
+        SetOption("cscale", "bilinear");
         SetOption("image-display-duration", "inf");  // les images fixes restent affichées
         SetOption("osc", "no");
         SetOption("input-default-bindings", "no");

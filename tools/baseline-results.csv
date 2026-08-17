@@ -22,3 +22,6 @@
 "2026-08-17 00:26","conversion-ffmpeg","1","806bb29","21","1,68","10,21","on","23,54","24,77","331","393","tools/bench-media/webp-reference.webp (1280x720, 20fps, ~6s/120 frames, synthétique)","ffmpeg","34,98","34,98","148","148"
 "2026-08-17 00:26","conversion-ffmpeg","2","806bb29","21","0,76","2,45","on","24,21","26","315","347","tools/bench-media/webp-reference.webp (1280x720, 20fps, ~6s/120 frames, synthétique)","ffmpeg","","","",""
 "2026-08-17 00:27","conversion-ffmpeg","3","806bb29","21","1,18","3,46","on","23,78","25,26","308","323","tools/bench-media/webp-reference.webp (1280x720, 20fps, ~6s/120 frames, synthétique)","ffmpeg","29,95","29,95","149","149"
+"2026-08-17 01:51","mp4-1080p-fenetre-fermee","1","dd3c751+cscale-bilinear","62","0,25","0,93","on","29,14","30,4","269","272","tools/bench-media/mp4-1080p-reference.mp4","","","","",""
+"2026-08-17 01:52","mp4-1080p-fenetre-fermee","2","dd3c751+cscale-bilinear","60","0,21","0,95","on","29,73","31,83","269","273","tools/bench-media/mp4-1080p-reference.mp4","","","","",""
+"2026-08-17 01:53","mp4-1080p-fenetre-fermee","3","dd3c751+cscale-bilinear","62","0,14","0,76","on","29,47","30,55","269","272","tools/bench-media/mp4-1080p-reference.mp4","","","","",""

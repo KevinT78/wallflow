@@ -136,11 +136,21 @@ perçu.** Le chiffre reste la preuve à produire en cas de doute (re-mesure via
 
 **Le GPU n'est pas budgété — décision assumée, pas un oubli.** Le cache ffmpeg (ligne suivante)
 échange délibérément du CPU contre du GPU ; la re-mesure le confirme chiffré : 24-25 % GPU moyen
-en cache webp chaud, jusqu'à 51,61 % moyen sur mp4 1080p. Le critère observable ci-dessus couvre
-CPU et GPU ensemble (un GPU chargé chauffe aussi le ventilateur) — pas de second budget chiffré à
-maintenir en parallèle. Une réduction du coût GPU du mp4 1080p reste néanmoins visée, sans
-gêne ressentie ni seuil dépassé, par prudence sur un iGPU de portable : voir
-[#27](https://github.com/KevinT78/wallflow/issues/27).
+en cache webp chaud. Le critère observable ci-dessus couvre CPU et GPU ensemble (un GPU chargé
+chauffe aussi le ventilateur) — pas de second budget chiffré à maintenir en parallèle.
+
+**mp4 1080p optimisé** ([#27](https://github.com/KevinT78/wallflow/issues/27), résolu
+2026-08-17) : 51,61 % GPU moyen mesuré en #25 ramené à **29,47 % moyen** (médiane de 3 passages,
+même protocole, même média de référence) par un seul changement dans `MpvPlayer` —
+`cscale=bilinear`. Cause : mpv (`vo=gpu-next`) reconstruit la chrominance 4:2:0 → 4:4:4 à
+**chaque frame quelle que soit la résolution** (même à 1:1 vidéo/écran, aucun scaling au sens
+classique) ; son filtre de chroma par défaut est cher sur un iGPU faible (HD 520 : moteur 3D
+38,9 % → 17,4 %, décodage matériel inchangé ~10 %). Deux autres leviers candidats testés et
+écartés par mesure : `vo=gpu` (plus lourd que `gpu-next`, 57,7 % GPU) et `hwdec` explicite
+(`d3d11va` ≈ `auto`, aucun gain — `auto` négocie déjà le bon backend). `scale=bilinear` et
+`dither=no` ajoutés en combinaison n'apportaient aucun gain mesurable au-delà de `cscale` seul.
+Troisième levier du ticket (cadence de rendu) non exploré : `cscale` seul explique déjà tout
+l'écart mesuré côté moteur 3D, rien n'indiquait un rendu plus rapide que l'écran n'en a besoin.
 
 - **Bug corrigé (cause racine n°1)** : recréer un player mpv émet un `DisplaySettingsChanged`,
   que l'app retransformait en `Rebuild()` → boucle infinie à ~33 Hz (mp4 : 43 % CPU). Garde par
