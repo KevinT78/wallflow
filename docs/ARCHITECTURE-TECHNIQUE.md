@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `546b35e` (2026-08-13)._
-<!-- doc-provenance: commit=546b35e generated=2026-08-13 -->
+> _Généré au commit `c40e340` (2026-08-17)._
+<!-- doc-provenance: commit=c40e340 generated=2026-08-17 -->
 
 ## Stack
 
@@ -391,14 +391,23 @@ fait réémettre le WorkerW par Explorer) : le HWND capturé par `Init()` devien
 constaté en usage réel : un handle périmé reste souvent un HWND *valide* auquel `CreateWindowEx`
 réussit quand même (la fenêtre existe encore, juste plus composée à l'écran) — pas d'erreur Win32 à
 détecter, donc `mpv` échoue ensuite silencieusement à s'attacher au host (`vo: unable to create
-window`), écran noir permanent. `WallpaperHost.CreateHostFor` relocalise donc le WorkerW (`Init()`)
-à **chaque** appel, plutôt que seulement en réaction à un échec explicite de `CreateWindowEx`.
+window`), écran noir permanent. Le succès de `CreateWindowEx` ne prouve donc rien à lui seul :
+`CreateHostFor` relocalise le WorkerW (`Init()`) puis, après un court délai (`ShellSettleMs` =
+120 ms, le temps qu'Explorer finisse une réémission asynchrone), vérifie que le host **et** son
+WorkerW parent sont toujours vivants (`SurvivesShellSettle` : `IsWindow` + `GetParent`). En cas
+d'échec, le host mort-né est détruit et une nouvelle tentative repart depuis `Init()` (jusqu'à
+`HostCreationAttempts` = 3 — le pire cas observé en réel, trois réémissions enchaînées lors d'un
+Retirer → Remettre, s'est résolu en une seule reprise).
 
 Options mpv posées au constructeur (défauts sûrs, écrasés ensuite par `ApplySettings`) :
-`loop-file=inf`, `mute=yes`, `panscan=1.0` (cover), `hwdec=auto`. Deux subtilités relevées en
-code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se pilote via
-`panscan` + `keepaspect` (cover = panscan 1 ; fit = panscan 0 ; fill = keepaspect no) — et la
-vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait rejeté par mpv).
+`loop-file=inf`, `mute=yes`, `panscan=1.0` (cover), `hwdec=auto`, `cscale=bilinear`. Deux
+subtilités relevées en code-review : mpv n'a **pas** de propriété `video-fit` — le cadrage se
+pilote via `panscan` + `keepaspect` (cover = panscan 1 ; fit = panscan 0 ; fill = keepaspect
+no) — et la vitesse est formatée en `CultureInfo.InvariantCulture` (en fr-FR, `1,50` serait
+rejeté par mpv). `cscale=bilinear` ([#27](https://github.com/KevinT78/wallflow/issues/27)) :
+`vo=gpu-next` reconstruit la chrominance 4:2:0 → 4:4:4 à chaque frame quelle que soit la
+résolution (même à 1:1 vidéo/écran) avec un filtre par défaut coûteux sur un iGPU faible —
+51,61 % → 29,47 % GPU moyen mesuré sur mp4 1080p (HD 520, voir DESIGN.md Performance).
 
 `MpvPlayer` fait tourner une boucle d'événements mpv (`mpv_wait_event`, thread `mpv-events` en
 arrière-plan) pour observer la propriété `playback-error` et, via `mpv_request_log_messages`, les
