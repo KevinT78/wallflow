@@ -54,22 +54,38 @@ public static class WallpaperHost
     /// avant chaque (re)création de host — le shell peut recréer le WorkerW en cours de vie de l'app.</summary>
     public static void Init()
     {
-        var progman = FindWindow("Progman", null);
         // Message non documenté 0x052C : demande à Progman de créer le WorkerW derrière les icônes.
-        SendMessageTimeout(progman, 0x052C, 0xD, 0x1, 0, 1000, out _);
+        SendMessageTimeout(FindWindow("Progman", null), 0x052C, 0xD, 0x1, 0, 1000, out _);
+        _workerW = FindWorkerW();
+    }
 
-        _workerW = IntPtr.Zero;
+    /// <summary>Localise le WorkerW courant SANS demander sa création au shell. Séparé d'Init()
+    /// parce que HostsAlive l'appelle en boucle : envoyer 0x052C à Progman à chaque tick de
+    /// surveillance reviendrait à secouer le shell en permanence.</summary>
+    private static IntPtr FindWorkerW()
+    {
+        var found = IntPtr.Zero;
         EnumWindows((top, _) =>
         {
             // Le WorkerW cible est le frère qui SUIT la fenêtre contenant SHELLDLL_DefView (les icônes).
             if (FindWindowEx(top, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
-                _workerW = FindWindowEx(IntPtr.Zero, top, "WorkerW", null);
+                found = FindWindowEx(IntPtr.Zero, top, "WorkerW", null);
             return true;
         }, IntPtr.Zero);
 
         // Win11 24H2 : plus de WorkerW séparé, Progman héberge directement le fond.
-        if (_workerW == IntPtr.Zero)
-            _workerW = progman;
+        return found != IntPtr.Zero ? found : FindWindow("Progman", null);
+    }
+
+    /// <summary>Vrai si tous les hosts sont encore vivants ET enfants du WorkerW COURANT. Le second
+    /// test est le seul qui détecte une réémission : Explorer détruit l'ancien WorkerW avec ses
+    /// enfants (IsWindow devient faux), mais un handle simplement périmé reste souvent valide tout
+    /// en n'étant plus composé à l'écran — même critère que SurvivesShellSettle, sans l'attente.</summary>
+    public static bool HostsAlive(IReadOnlyList<IntPtr> hosts)
+    {
+        if (hosts.Count == 0) return true; // rien à surveiller : pas un état cassé
+        var workerW = FindWorkerW();
+        return hosts.All(h => h != IntPtr.Zero && IsWindow(h) && GetParent(h) == workerW);
     }
 
     /// <summary>Crée une fenêtre enfant du WorkerW couvrant l'écran donné. Coordonnées relatives à l'écran virtuel.

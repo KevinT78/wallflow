@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using System.Windows.Threading;
 
 namespace Wallflow;
 
@@ -8,6 +9,7 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     private sealed record Entry(IntPtr Host, MpvPlayer Player);
 
     private readonly List<Entry> _entries = [];
+    private readonly DispatcherTimer _hostWatchdog;
     private string? _current;
     private bool _paused;
     private Settings? _settings;
@@ -16,10 +18,41 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     /// <summary>Agrège les PlaybackError des MpvPlayer (émis depuis la thread d'événements mpv).</summary>
     public event Action<string>? PlaybackError;
 
+    public PlayerManager()
+    {
+        // Filet de sécurité, sur le modèle du timer 2 s d'ActivityMonitor. Explorer peut réémettre
+        // le WorkerW sans qu'aucun événement exploitable ne nous parvienne — constaté au réveil
+        // d'une veille prolongée le 2026-08-20 : hosts détruits, process vivant, journal muet,
+        // bureau noir jusqu'au prochain Apply manuel. Les deux chemins événementiels ne rattrapent
+        // PAS ce cas : PowerModes.Resume → ResyncLight recharge dans les hosts morts, et
+        // DisplaySettingsChanged → Rebuild sort tôt puisque la config d'écrans n'a pas bougé.
+        _hostWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _hostWatchdog.Tick += (_, _) => EnsureHostsAlive();
+        _hostWatchdog.Start();
+    }
+
     // La recréation d'un player mpv (contexte D3D11 dans le WorkerW) émet elle-même un
     // DisplaySettingsChanged → boucle infinie de Rebuild si on ne compare pas la config réelle.
     private static string ScreenSig() =>
         string.Join(";", Screen.AllScreens.Select(s => s.Bounds));
+
+    private bool HostsAlive() => WallpaperHost.HostsAlive(_entries.Select(e => e.Host).ToList());
+
+    /// <summary>Tick du watchdog : recharge le wallpaper si les hosts ont été perdus. Le rechargement
+    /// passe par EnsurePlayers, qui voit les hosts morts et recrée tout. No-op au cas nominal.</summary>
+    private void EnsureHostsAlive()
+    {
+        // Une exception ici est fatale (Tick → Dispatcher → processus), comme dans
+        // ActivityMonitor.Poll : une surveillance best-effort ne doit jamais tuer l'app.
+        try
+        {
+            if (_current is { } path && _entries.Count > 0 && !HostsAlive()) Load(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Watchdog des hosts échoué ({ex.GetType().Name} : {ex.Message})");
+        }
+    }
 
     public void Load(string path)
     {
@@ -81,7 +114,17 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
 
     private void EnsurePlayers()
     {
-        if (_entries.Count > 0) return;
+        if (_entries.Count > 0)
+        {
+            if (HostsAlive()) return;
+            // Explorer a réémis le WorkerW : nos hosts sont détruits ou orphelins. Recharger le
+            // fichier dans ces players ne peint plus rien — bureau noir, et aucune erreur mpv pour
+            // le signaler. Guard placé ici parce que tout ce qui (re)crée des players y passe :
+            // Load, Resync, ResyncLight et le watchdog. Rebuild, lui, sort avant sur une ScreenSig()
+            // inchangée — c'est justement pourquoi il ne rattrapait pas le bureau noir au réveil.
+            Log.Warn("Hosts perdus (réémission du WorkerW) — recréation des players");
+            DisposePlayers();
+        }
         _screenSig = ScreenSig();
         foreach (var screen in Screen.AllScreens)
         {
@@ -124,6 +167,7 @@ public sealed class PlayerManager : IPlayerManager, IDisposable
     // Quitter : mêmes symptômes qu'un Clear (bureau blanc sinon), mais l'app se termine derrière.
     public void Dispose()
     {
+        _hostWatchdog.Stop();
         DisposePlayers();
         WallpaperHost.RestoreDesktop();
     }
