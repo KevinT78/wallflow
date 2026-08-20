@@ -3,8 +3,8 @@
 > **Niveau 1 / 2** — Document de présentation, destiné à un lecteur non technique.
 > Pour le détail d'implémentation, voir [ARCHITECTURE-TECHNIQUE.md](./ARCHITECTURE-TECHNIQUE.md).
 > Le vocabulaire employé ici est défini dans [../CONTEXT.md](../CONTEXT.md).
-> _Généré au commit `c40e340` (2026-08-17)._
-<!-- doc-provenance: commit=c40e340 generated=2026-08-17 -->
+> _Généré au commit `afdfd3e` (2026-08-20)._
+<!-- doc-provenance: commit=afdfd3e generated=2026-08-20 -->
 
 ## En une phrase
 
@@ -93,6 +93,8 @@ flowchart TD
    performances ou l'autonomie.
 5. Au redémarrage de Windows, le wallpaper revient sans aucune action ; même chose si l'application
    avait disparu pendant une longue mise en veille prolongée — elle se relance toute seule au réveil.
+   Et si c'est Windows qui a repris la main sur le bureau pendant la veille, l'application s'en
+   aperçoit en quelques secondes et se réinstalle d'elle-même : plus de bureau noir au réveil.
 6. À tout moment, **Retirer le fond d'écran** (depuis la fenêtre ou la zone de notification) rend le
    bureau Windows d'origine tout en gardant l'application prête à ré-appliquer ; **Quitter** ferme
    l'application en restaurant lui aussi le fond — jamais de bureau blanc.

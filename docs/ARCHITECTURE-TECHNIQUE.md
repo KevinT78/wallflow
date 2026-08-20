@@ -4,8 +4,8 @@
 > Vue produit : [VUE-PRODUIT.md](./VUE-PRODUIT.md) · Glossaire : [../CONTEXT.md](../CONTEXT.md) ·
 > Décisions produit : [../DESIGN.md](../DESIGN.md).
 > Les diagrammes ci-dessous sont en **Mermaid** : ils s'affichent directement sur GitHub.
-> _Généré au commit `c40e340` (2026-08-17)._
-<!-- doc-provenance: commit=c40e340 generated=2026-08-17 -->
+> _Généré au commit `afdfd3e` (2026-08-20)._
+<!-- doc-provenance: commit=afdfd3e generated=2026-08-20 -->
 
 ## Stack
 
@@ -89,6 +89,7 @@ classDiagram
     class PlayerManager {
         MpvPlayer[] players
         Settings settings
+        DispatcherTimer toutes les 5 s   // watchdog : hosts perdus → recréation
     }
     class MpvPlayer {
         IntPtr parentHwnd
@@ -103,6 +104,7 @@ classDiagram
     }
     class WallpaperHost {
         CreateHostFor(screen) IntPtr  // retry tant que le host ne survit pas au shell
+        HostsAlive(hosts) bool        // vivants ET enfants du WorkerW courant
         RestoreDesktop()
         PauseSlideshowIfActive() SlideshowSnapshot?
         ResumeSlideshow(snapshot)
@@ -370,10 +372,21 @@ La **reprise de veille** (`SystemEvents.PowerModeChanged` = `Resume`) ne re-enum
 et ne détruit plus le contexte mpv : `IPlayerManager.ResyncLight()` rejoue le wallpaper courant sur
 place en gardant le contexte mpv et le host Win32 vivants (simple `Load()`), sans passer par la
 garde `ScreenSig` ni par le teardown complet de `Resync()`. Un vrai changement d'écrans (nombre de
-`Entry`/HWND qui change) continue de passer par `Rebuild()` → `Resync()`, seul cas qui a besoin de
-détruire/recréer les hosts. Les événements `SystemEvents` arrivent sur un thread de pool :
-`AppService` les marshale vers le `Dispatcher` (`OnUiThread`, no-op si aucune `Application`) avant
-de toucher aux players — pas de race sur le WorkerW entre un hook système et la boucle UI.
+`Entry`/HWND qui change) continue de passer par `Rebuild()` → `Resync()`. Les événements
+`SystemEvents` arrivent sur un thread de pool : `AppService` les marshale vers le `Dispatcher`
+(`OnUiThread`, no-op si aucune `Application`) avant de toucher aux players — pas de race sur le
+WorkerW entre un hook système et la boucle UI.
+
+> ⚠️ **« Garder le host vivant » est une hypothèse, pas un fait** : après une veille prolongée,
+> Explorer peut avoir réémis le WorkerW, détruisant avec lui les fenêtres hôtes — process vivant,
+> journal muet, bureau noir jusqu'au prochain Apply manuel (constaté le 2026-08-20). Ni
+> `ResyncLight` (qui rechargeait dans des hosts morts) ni `Rebuild` (qui sort tôt, la config
+> d'écrans n'ayant pas bougé) ne rattrapaient ce cas. Deux protections depuis : un **guard** dans
+> `EnsurePlayers` — si `WallpaperHost.HostsAlive()` est faux, teardown puis recréation, ce qui
+> couvre d'un coup `Load`, `Resync`, `ResyncLight` et le watchdog — et un **`DispatcherTimer` 5 s**
+> dans `PlayerManager`, puisque aucun événement Windows ne signale une réémission du WorkerW (même
+> rôle que le filet 2 s d'`ActivityMonitor`). `HostsAlive` teste `IsWindow` **et** la filiation au
+> WorkerW *courant* : un handle simplement périmé reste souvent valide tout en n'étant plus composé.
 
 ## Intégration bureau (WorkerW)
 
